@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="Cache" version="25">
+  <Document name="gaia-iml.ZPM">
+    <Module>
+      <Name>gaia-iml</Name>
+      <Description>Gaia DR3 variable star detection using IntegratedML Custom Models + AI Hub. Scans 21 gzipped epoch photometry files, ingests flux stats into IRIS, scores each source with SQL PREDICT() using a pre-trained custom GradientBoostingClassifier IRISModel. ~5s end-to-end. InterSystems Employee Programming Challenge #1.</Description>
+      <Version>1.0.0</Version>
+      <Packaging>module</Packaging>
+      <Keywords>
+        <Keyword>IntegratedML</Keyword>
+        <Keyword>custom-models</Keyword>
+        <Keyword>AI-Hub</Keyword>
+        <Keyword>gaia</Keyword>
+        <Keyword>variable-stars</Keyword>
+        <Keyword>astronomy</Keyword>
+        <Keyword>embedded-python</Keyword>
+        <Keyword>PREDICT</Keyword>
+        <Keyword>scikit-learn</Keyword>
+        <Keyword>machine-learning</Keyword>
+      </Keywords>
+    </Module>
+  </Document>
+</Export>
