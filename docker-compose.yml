@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  iris:
+    build: .
+    container_name: gaia-iml-iris
+    ports:
+      - "1972:1972"
+      - "52773:52773"
+    volumes:
+      - .:/app:ro
+      - ./.data/in:/app/.data/in:ro
+      - ./.data/out:/app/.data/out
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+volumes: {}
