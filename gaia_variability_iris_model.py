@@ -14,8 +14,8 @@ IRISModel contract (iris_automl/automl_model.py):
       before calling self.model.fit(X, y) — X arrives as a dense float array
       of already-transformed features; column indices are not stable across runs.
 
-Feature columns used: bp_pct_change, rp_pct_change, n_bp_transits, n_rp_transits
-Target: percentage_change (the larger of bp_pct_change and rp_pct_change)
+Feature columns used: source_id, bp_min, bp_max, rp_min, rp_max, n_bp, n_rp, pct_change, is_variable
+Target: is_variable (binary classification)
 """
 
 from sklearn.ensemble import GradientBoostingClassifier

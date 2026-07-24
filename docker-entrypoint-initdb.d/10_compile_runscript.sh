@@ -14,7 +14,7 @@ print(' set sc = r.%Save() write \"save:\",sc,!')
 print(' set sc = r.Compile() write \"compile:\",sc,!')
 print(' halt')
 ")
-echo "$WRITE_SCRIPT" | iris session "$IRIS_INSTANCE" -U USER > /proc/1/fd/1 2>&1 || true
+echo "$WRITE_SCRIPT" | iris session "$IRIS_INSTANCE" -U USER > /proc/1/fd/1 2>&1
 
 echo "=== Pre-training GaiaVariability model ==="
 /usr/irissys/bin/irispython /docker-entrypoint-initdb.d/05_pretrain_gaia_model.py > /proc/1/fd/1 2>&1
