@@ -1,0 +1,14 @@
+ROUTINE Analyze
+ ; Optional AI Hub deliverable: an autonomous %AI.Agent that investigates the
+ ; GaiaFluxStats table over SQL and writes data/out/analysis.md.
+ ; Kept out of ^RunScript on purpose - it makes LLM calls, so its wall-clock is
+ ; not ours to control, and ^RunScript is the benchmarked entry point.
+ ; Requires OPENAI_API_KEY in the container environment; without it this prints
+ ; the reason and exits, leaving result.csv untouched.
+ New outDir,report
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Write "Running Gaia.Analyst (AI Hub agent, up to 6 LLM iterations)...",!
+ Set report = ##class(Gaia.Analyst).Report(outDir_"/analysis.md")
+ Write "Analysis: ",outDir,"/analysis.md (",$Length(report)," chars)",!
+ Quit

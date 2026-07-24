@@ -1,8 +1,0 @@
-RunScript
-    set inDir  = "/app/.data/in"
-    set outDir = "/app/.data/out"
-    do ##class(%File).CreateDirectoryChain(outDir)
-    set cmd = "GAIA_CACHE="_inDir_" GAIA_OUT="_outDir_" /usr/irissys/bin/irispython /app/run_embedded_iml.py > /dev/null 2>&1"
-    set rc = $ZF(-1, cmd)
-    if rc = 0 { write "OK: "_outDir_"/result.csv",! } else { write "ERROR: rc="_rc,! }
-    quit

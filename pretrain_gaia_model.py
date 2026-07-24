@@ -51,19 +51,17 @@ for r in rows:
     stmt.execute(*r)
 print(f"Inserted {len(rows)} synthetic training rows")
 
-# Copy custom classifier to iris_automl Classifiers dir
-import shutil, os, glob
+# Resolve the Classifiers dir by importing the installed package rather than
+# globbing for it — the install prefix differs across IRIS images, and a missed
+# glob silently yields a pathtoclassifiers of "None", which then fails deep
+# inside TRAIN MODEL. The Dockerfile already copied the classifier in as root.
+import os, iris_automl
 
-classifiers_dirs = glob.glob("/*/mgr/python/iris_automl/Classifiers") + \
-                   glob.glob("/opt/*/mgr/python/iris_automl/Classifiers")
-src = "/app/gaia_variability_iris_model.py"
-for d in classifiers_dirs:
-    if os.path.isdir(d):
-        shutil.copy(src, d)
-        print(f"Copied custom classifier to {d}")
-
-# Locate the classifiers directory
-classifiers_path = classifiers_dirs[0] if classifiers_dirs else None
+classifiers_path = os.path.join(os.path.dirname(iris_automl.__file__), "Classifiers")
+model_file = os.path.join(classifiers_path, "gaia_variability_iris_model.py")
+if not os.path.isfile(model_file):
+    raise RuntimeError(f"custom classifier not installed at {model_file}")
+print(f"Using classifiers dir {classifiers_path}")
 
 # Create and train model
 for sql in ("DROP MODEL IF EXISTS GaiaVariability",):
@@ -71,9 +69,16 @@ for sql in ("DROP MODEL IF EXISTS GaiaVariability",):
     except: pass
 
 using = '{"iscmodelsdisabled":1,"pathtoclassifiers":"' + str(classifiers_path) + '"}'
+# Train on the raw flux columns only. pct_change must be excluded: is_variable is
+# defined as pct_change > 100, so including it leaks the target and the model
+# degenerates to "always 1" - it predicted variable for all 74,998 real rows,
+# including all 17,899 with pct_change <= 100. Learning from the fluxes and epoch
+# counts instead makes PREDICT() a genuine classifier.
 iris.sql.exec(
-    f"CREATE MODEL GaiaVariability PREDICTING (is_variable) FROM GaiaFluxStats "
-    f"USING {using}"
+    f"CREATE MODEL GaiaVariability PREDICTING (is_variable) "
+    f"WITH (bp_min NUMERIC, bp_max NUMERIC, rp_min NUMERIC, rp_max NUMERIC, "
+    f"n_bp NUMERIC, n_rp NUMERIC) "
+    f"FROM GaiaFluxStats USING {using}"
 )
 print("Training GaiaVariability model...")
 iris.sql.exec("TRAIN MODEL GaiaVariability")

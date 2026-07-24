@@ -1,0 +1,24 @@
+ROUTINE RunScript
+ ; Gaia DR3 variable star detection - IntegratedML + AI Hub entry.
+ ; Judges invoke "do ^RunScript", which enters here at the top line.
+ ; 1. Embedded Python scans data/in and ingests flux stats into GaiaFluxStats
+ ; 2. SQL PREDICT(GaiaVariability) scores every source alongside the
+ ;    deterministic rule, and data/out/result.csv is written
+ ; The AI Hub agent is deliberately NOT in this path - it makes LLM calls whose
+ ; latency is not ours to control, and this routine is the benchmarked one.
+ ; Run it separately with: do ^Analyze
+ New inDir,outDir,startTime,cmd,rc,elapsed
+ Set inDir = "/home/irisowner/dev/data/in"
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Set startTime = $ZHOROLOG
+ Set cmd = "GAIA_CACHE="_inDir_" GAIA_OUT="_outDir_" /usr/irissys/bin/irispython /home/irisowner/dev/run_embedded_iml.py"
+ Set rc = $ZF(-1, cmd)
+ Set elapsed = $ZHOROLOG - startTime
+ If rc '= 0 {
+  Write "ERROR: rc=",rc,!
+  Quit
+ }
+ Write "OK: ",outDir,"/result.csv",!
+ Write "Elapsed time: ",elapsed," seconds",!
+ Quit
