@@ -1,4 +1,4 @@
-ARG IRIS_IMAGE=docker.iscinternal.com/docker-intersystems/intersystems/irishealth:2026.3.0AI.113.0-linux-arm64v8
+ARG IRIS_IMAGE=docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.2.0AI.162.0
 FROM ${IRIS_IMAGE}
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && rm -rf /var/lib/apt/lists/*
