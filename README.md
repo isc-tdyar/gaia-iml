@@ -142,6 +142,15 @@ Expected: 20 files, ~360 MB total, 74,998 sources.
 
 ## Quick Start
 
+The RLM analysis classes extend [rlm-core](https://github.com/isc-tdyar/rlm-iris),
+which arrives as a submodule at `lib/rlm-core`. Clone with it or nothing compiles:
+
+```bash
+git clone --recursive https://github.com/isc-tdyar/gaia-iml.git
+# already cloned without it:
+git submodule update --init
+```
+
 ```bash
 # Place Gaia EpochPhotometry .gz files in data/in/
 docker compose up --build -d

@@ -1,0 +1,3 @@
+[submodule "lib/rlm-core"]
+	path = lib/rlm-core
+	url = https://github.com/isc-tdyar/rlm-iris.git

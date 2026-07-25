@@ -20,6 +20,16 @@
       <Resource Name="RLMTriage.MAC"/>
       <Resource Name="RLM2Audit.MAC"/>
       <Keywords>IntegratedML,custom-models,AI-Hub,gaia,variable-stars,astronomy,embedded-python,PREDICT,NGBoost,machine-learning</Keywords>
+      <!-- The RLM analysis classes come from rlm-core. In the container the
+           library arrives as the lib/rlm-core submodule, because the 2026.3 AI
+           preview image ships no package manager; this entry is for anyone
+           installing on an image that has one. Both routes name one version. -->
+      <Dependencies>
+        <ModuleReference>
+          <Name>rlm-core</Name>
+          <Version>0.0.*</Version>
+        </ModuleReference>
+      </Dependencies>
     </Module>
   </Document>
 </Export>

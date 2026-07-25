@@ -1,3 +1,8 @@
+    ; rlm-core first: the Gaia classes extend RLM.Source.Table and RLM.LLM, so
+    ; load order is not cosmetic -- src/ will not compile without the library
+    ; already present. Submodule; a plain clone leaves lib/rlm-core empty.
+    do $System.OBJ.LoadDir("/home/irisowner/dev/lib/rlm-core/src","ck",,1)
+
     ; compile RunScript.mac plus the Gaia.Analyst / Gaia.RLM AI Hub agent classes
     ; (LoadDir skips .mac routines, so load each entry point explicitly)
     do $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
