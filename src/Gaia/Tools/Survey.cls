@@ -16,14 +16,21 @@
 Class Gaia.Tools.Survey Extends %AI.Tool
 {
 
+/// The store both tools read. Not a property: %AI.Tool instances are created per
+/// invocation, so there is nothing for an instance to cache.
+ClassMethod Store() As Gaia.Source
+{
+    Quit ##class(Gaia.Source).%New()
+}
+
 /// List the ways the Gaia survey can be sliced. Returns each dimension, what it
 /// means, and the exact child tokens accepted by PeekSlice. Call this first.
 Method ListDimensions() As %String
 {
-    Quit "Slices are named `dimension:child`, and nest with `/` up to "
-        _##class(Gaia.Slice).#MAXDEPTH_" levels "
-        _"(for example `reject_level:severe/epoch_count:few`). Each dimension may "
-        _"appear once in a path."_$Char(10,10)_##class(Gaia.Slice).Menu()
+    // RLM.Slice.Menu states the grammar itself, from the store, so the sentence the
+    // prototype wrote here is gone rather than reworded: two statements of one
+    // grammar is how the menu and the resolver come to disagree.
+    Quit ##class(RLM.Slice).Menu(..Store())
 }
 
 /// Get summary statistics for one slice of the Gaia survey. `slice` must be a
@@ -32,18 +39,20 @@ Method ListDimensions() As %String
 /// individual sources. SQL is not accepted.
 Method PeekSlice(slice As %String) As %String
 {
-    Set sc = ##class(Gaia.Slice).Resolve(slice, .where, .label)
+    Set store = ..Store()
+    Set sc = ##class(RLM.Slice).Resolve(store, slice, .where, .label)
     If $$$ISERR(sc) {
-        // Refuse with the grammar attached. A bare "invalid" makes the agent retry
-        // at random, and random retries are what exhaust the call budget.
+        // Refuse with the grammar attached, which RLM.Slice already puts in the
+        // status. A bare "invalid" makes the agent retry at random, and random
+        // retries are what exhaust the call budget.
         Quit "Refused: "_$System.Status.GetErrorText(sc)
     }
-    Set peek = ##class(Gaia.RLM).Peek(where)
+    Set peek = store.Peek(where)
     If peek.%IsDefined("error") { Quit "Query failed: "_peek.error }
     // Counted as a peek, not a delegation. Gaia.RLM2.Report traces the slices it
     // delegates; what an analyst peeks at inside its own slice is its working.
     Do ##class(Gaia.RLM2).Peeked(slice, peek.n)
-    Quit ##class(Gaia.RLM).Describe(label, peek)
+    Quit store.Describe(label, peek)
 }
 
 }

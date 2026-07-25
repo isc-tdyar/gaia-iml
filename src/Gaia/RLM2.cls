@@ -21,9 +21,12 @@
 ///
 /// The safety properties stay in ObjectScript rather than moving into the prompt:
 ///
-/// - Slice names are whitelist lookups, not SQL. Gaia.Slice resolves
-///   `reject_level:severe` against Gaia.RLM.Dimensions() and refuses anything that
-///   is not a token path, so the model cannot express a predicate at all.
+/// - Slice names are whitelist lookups, not SQL. RLM.Slice resolves
+///   `reject_level:b3` against the dimensions Gaia.Source declares and refuses
+///   anything that is not a token path, so the model cannot express a predicate at
+///   all. That resolver is the library's, and it is the same one Gaia.RLM's engine
+///   uses: this class used to carry a second copy of the walk, which is one more
+///   place a whitelist could quietly stop being one.
 /// - The call budget is enforced here, in TrySpend(), not requested in the prompt.
 ///   An agent that ignores its instructions still cannot overspend; it gets a
 ///   refusal and the report records the truncation.
@@ -52,6 +55,17 @@ Parameter MAXITERATIONS = 12;
 /// request, and the whole reason to prefer this design over a raw SQL toolset is
 /// that the limits do not depend on the model complying.
 Parameter MAXCALLS = 6;
+
+/// The store, as the delegating path sees it.
+///
+/// A fresh Gaia.Source per call rather than a cached one. It is cheap to build --
+/// %OnNew only declares dimensions -- and the alternative is process-wide state
+/// holding a cached statistical baseline, which is the kind of thing that makes two
+/// runs in one session differ.
+ClassMethod Store() As Gaia.Source
+{
+    Quit ##class(Gaia.Source).%New()
+}
 
 /// Delegations spent on the current report.
 ClassMethod Spent() As %Integer
@@ -125,20 +139,20 @@ ClassMethod WriteReport(outPath As %String, report As %String) As %Status
 ///
 /// The plan is the model's, so it arrives as prose, bullets, backticks or all three,
 /// and may name slices that do not exist. Everything here is filtering: each
-/// candidate has to resolve against Gaia.Slice, duplicates are dropped, and the
+/// candidate has to resolve against RLM.Slice, duplicates are dropped, and the
 /// result is capped at MAXCALLS before the first spawn rather than being refused
 /// after the last one. An unusable answer falls back to the first dimension's
 /// children, so a report still gets written.
 ClassMethod ParsePlan(text As %String) As %List
 {
-    Set plan = "", seen = ""
+    Set plan = "", seen = "", store = ..Store()
     // Commas, newlines and spaces are all plausible separators, so normalize to one.
     Set text = $Translate(text, $Char(10, 13, 9)_",", "    ")
     For i = 1:1:$Length(text, " ") {
         Set cand = $ZStrip($ZConvert($Piece(text, " ", i), "L"), "<>WC", "`'""*-.:;()[]")
         Continue:cand=""
         Continue:'cand[":"
-        Continue:$$$ISERR(##class(Gaia.Slice).Resolve(cand, .w, .l))
+        Continue:$$$ISERR(##class(RLM.Slice).Resolve(store, cand, .w, .l))
         Continue:(","_seen_",")[(","_cand_",")
         Set seen = seen_$Select(seen="":"",1:",")_cand
         Set plan = plan_$ListBuild(cand)
@@ -148,11 +162,11 @@ ClassMethod ParsePlan(text As %String) As %List
 
     // Nothing usable. Fall back to subdividing by the first dimension, which is the
     // decomposition Gaia.RLM would have started from anyway.
-    Set dims = ##class(Gaia.RLM).Dimensions(), it = dims.%GetIterator()
+    Set dims = store.Dimensions(), it = dims.%GetIterator()
     If 'it.%GetNext(.key, .spec) { Quit "" }
     For c = 1:1:spec.children.%Size() {
         Quit:$ListLength(plan)>=..#MAXCALLS
-        Set plan = plan_$ListBuild(key_":"_##class(Gaia.Slice).ChildToken(spec.children.%Get(c - 1)))
+        Set plan = plan_$ListBuild(key_":"_spec.children.%Get(c - 1).token)
     }
     Quit plan
 }
@@ -171,7 +185,7 @@ ClassMethod AskForPlan(question As %String, rootDesc As %String) As %String
     Set session = agent.CreateSession()
     Set reply = agent.Chat(session, "Analysis question: "_question_$Char(10,10)
         _"Survey-wide statistics:"_$Char(10)_rootDesc_$Char(10,10)
-        _"Ways to slice the survey:"_$Char(10)_##class(Gaia.Slice).Menu())
+        _"Ways to slice the survey:"_$Char(10)_##class(RLM.Slice).Menu(..Store()))
     Quit reply.Content
 }
 
@@ -189,7 +203,11 @@ ClassMethod Report(outPath As %String = "", question As %String = "", title As %
         // Same completeness guard as Gaia.RLM. The report is framed around the
         // NGBoost predictions, so averaging over whichever rows happen to have them
         // would produce a confident and wrong document.
-        Set rootPeek = ##class(Gaia.RLM).Peek("1=1")
+        // The store, not Gaia.RLM. The peek, the description and the slice
+        // arithmetic are all Gaia.Source's now, so both implementations read the
+        // survey through one class and cannot disagree about what a slice contains.
+        Set store = ..Store()
+        Set rootPeek = store.Peek()
         If rootPeek.%IsDefined("error") {
             Throw ##class(%Exception.General).%New("Peek failed: "_rootPeek.error)
         }
@@ -199,7 +217,7 @@ ClassMethod Report(outPath As %String = "", question As %String = "", title As %
                 _rootPeek."n_pred"_" of "_rootPeek.n_" rows - run ^RunScript to completion first")
         }
 
-        Set rootDesc = ##class(Gaia.RLM).Describe("whole survey", rootPeek)
+        Set rootDesc = store.Describe("whole survey", rootPeek)
 
         // The root. It is the ParentAgent every subagent is spawned from, and it also
         // writes the final report.
@@ -227,8 +245,8 @@ ClassMethod Report(outPath As %String = "", question As %String = "", title As %
             Set slice = $List(plan, i)
             If '..TrySpend() { Quit }
             // ParsePlan already proved this resolves, so the size is free to record.
-            Do ##class(Gaia.Slice).Resolve(slice, .sliceWhere, .sliceLabel)
-            Do ..Trace(slice, ##class(Gaia.RLM).Peek(sliceWhere).n)
+            Do ##class(RLM.Slice).Resolve(store, slice, .sliceWhere, .sliceLabel)
+            Do ..Trace(slice, store.Peek(sliceWhere).n)
             Set delegate = ##class(Gaia.Tools.SliceAnalyst).%New()
             Set delegate.ParentAgent = agent
             Set answer = delegate.%Invoke("Execute", {"userRequest": (
