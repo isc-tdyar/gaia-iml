@@ -3,21 +3,23 @@
   <Document name="gaia-iml.ZPM">
     <Module>
       <Name>gaia-iml</Name>
-      <Description>Gaia DR3 variable star detection using IntegratedML Custom Models + AI Hub. Scans 21 gzipped epoch photometry files, ingests flux stats into IRIS, scores each source with SQL PREDICT() using a pre-trained custom GradientBoostingClassifier IRISModel. ~5s end-to-end. InterSystems Employee Programming Challenge #1.</Description>
+      <Description>Gaia DR3 variable star detection using IntegratedML Custom Models + AI Hub. Scans 20 gzipped epoch photometry files, ingests flux and per-epoch quality stats into IRIS, then scores every source with SQL PREDICT() against two custom NGBoost IRISModel regressors that predict ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. InterSystems Employee Programming Challenge #1.</Description>
       <Version>1.0.0</Version>
+      <Author>
+        <Person>Thomas Dyar</Person>
+        <Organization>InterSystems</Organization>
+        <License>MIT</License>
+      </Author>
       <Packaging>module</Packaging>
-      <Keywords>
-        <Keyword>IntegratedML</Keyword>
-        <Keyword>custom-models</Keyword>
-        <Keyword>AI-Hub</Keyword>
-        <Keyword>gaia</Keyword>
-        <Keyword>variable-stars</Keyword>
-        <Keyword>astronomy</Keyword>
-        <Keyword>embedded-python</Keyword>
-        <Keyword>PREDICT</Keyword>
-        <Keyword>scikit-learn</Keyword>
-        <Keyword>machine-learning</Keyword>
-      </Keywords>
+      <SourcesRoot>src</SourcesRoot>
+      <Resource Name="Gaia.PKG"/>
+      <Resource Name="UnitTest.Gaia.PKG"/>
+      <Resource Name="RunScript.MAC"/>
+      <Resource Name="Analyze.MAC"/>
+      <Resource Name="RLMAudit.MAC"/>
+      <Resource Name="RLMTriage.MAC"/>
+      <Resource Name="RLM2Audit.MAC"/>
+      <Keywords>IntegratedML,custom-models,AI-Hub,gaia,variable-stars,astronomy,embedded-python,PREDICT,NGBoost,machine-learning</Keywords>
     </Module>
   </Document>
 </Export>
