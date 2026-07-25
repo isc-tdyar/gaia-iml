@@ -107,10 +107,13 @@ Method TestEveryChildResolvesToItsMeasuredPopulation()
     Set want("signal_quality", "b1") = 23271
     Set want("signal_quality", "b2") = 25945
     Set want("signal_quality", "b3") = 794
-    Set want("model_confidence", "b0") = 24378
-    Set want("model_confidence", "b1") = 48450
-    Set want("model_confidence", "b2") = 1917
-    Set want("model_confidence", "b3") = 253
+    // model_confidence is deliberately absent. It buckets pred_sigma -- a model
+    // output, not a measurement -- and NGBoost does not train bit-identically
+    // across builds even with random_state pinned at 42 in both the USING clause
+    // (which seeds AutoML's row shuffle) and the IRISModel constructor. Two
+    // consecutive --no-cache builds gave b0 = 24377 then 24380. An exact literal
+    // here is a test that fails on a rebuild for no defect, so its own method
+    // below asserts a tolerance and the partition instead.
     Set want("variability", "b0") = 17899
     Set want("variability", "b1") = 17204
     Set want("variability", "b2") = 31224
@@ -131,6 +134,44 @@ Method TestEveryChildResolvesToItsMeasuredPopulation()
             Do $$$AssertEquals(..Source.Peek(predicate).n, expect, dim_":"_token_" population")
         }
     }
+}
+
+/// model_confidence, which the exact-population test cannot cover.
+///
+/// It buckets pred_sigma, the NGBoost sigma head's output, so its populations move
+/// a little whenever the models are retrained -- which happens at every
+/// `docker build`. Measured across two consecutive --no-cache builds with
+/// random_state pinned at 42 in both places that consume it: b0 24377/24380,
+/// b1 48452/48450, b2 1917/1912, b3 252/256.
+///
+/// What does hold, and is worth more than the exact figures: the four buckets
+/// partition the store, and the shape stays the same -- most sources in the two
+/// confident buckets, a long thin tail of uncertain ones. A model that collapsed
+/// to a constant, or a bucket encoding that went off by one, breaks both.
+Method TestModelConfidenceIsAPartitionOfTheExpectedShape()
+{
+    Set total = 0
+    For i = 0:1:3 {
+        Do ##class(RLM.Slice).Resolve(..Source, "model_confidence:b"_i, .predicate)
+        Set n(i) = ..Source.Peek(predicate).n
+        Set total = total + n(i)
+    }
+    Do $$$AssertEquals(total, 74998, "the four sigma buckets are the whole store")
+
+    // 2% around the measured figures: an order of magnitude wider than the drift
+    // seen between builds (0.05%), an order of magnitude tighter than any
+    // redistribution a real defect would cause.
+    Do $$$AssertTrue((n(0) > 23890) && (n(0) < 24865), "b0 near 24378, got "_n(0))
+    Do $$$AssertTrue((n(1) > 47481) && (n(1) < 49419), "b1 near 48450, got "_n(1))
+    Do $$$AssertTrue((n(2) > 1878) && (n(2) < 1956), "b2 near 1917, got "_n(2))
+    Do $$$AssertTrue((n(3) > 248) && (n(3) < 259), "b3 near 253, got "_n(3))
+
+    // The shape, stated independently of the numbers. A constant-output model puts
+    // every row in one bucket and satisfies the partition check alone.
+    Do $$$AssertTrue(n(1) > n(0), "most sources are in b1")
+    Do $$$AssertTrue(n(0) > n(2), "the confident buckets dwarf the uncertain tail")
+    Do $$$AssertTrue(n(2) > n(3), "the tail thins monotonically")
+    For i = 0:1:3 { Do $$$AssertTrue(n(i) > 0, "bucket b"_i_" is non-empty") }
 }
 
 /// The four variability children partition the store: nothing double-counted, no

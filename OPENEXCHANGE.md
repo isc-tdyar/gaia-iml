@@ -93,9 +93,21 @@ Done for all three:
 - No credentials in tracked files, no tracked file over 1 MB
 - `do ^RunScript` verified end to end on the 20-file benchmark; all three emit
   the same 57,099 `source_id`s
+- Each repo has `tests/e2e.sh`, run from a `--no-cache` rebuild rather than a
+  long-lived container. gaia-fast 12 checks in 0.84s, gaia-terse 13 in 16.6s,
+  gaia-iml 23 in 11.0s. All three assert the same literal checksum of the
+  `source_id` set, so the cross-entry agreement is a test rather than a claim.
+  gaia-iml also runs 85 `%UnitTest` methods and the IPM gate.
+
+  Writing these found a real defect. Both NGBoost models were training
+  unseeded: AutoML passes `random_state=None` explicitly, so
+  `kwargs.get("random_state", 42)` never returned 42, and AutoML's own
+  `df.sample(frac=1, random_state=...)` shuffle was unseeded too. Every
+  `docker build` produced a slightly different model. Accuracy was unaffected
+  (MAE 0.0432 both times) which is exactly why nothing caught it — it showed up
+  as bucket populations moving by ~0.05%. Both are now pinned.
 
 Still outstanding:
 
-- Push all three repos (10, 2 and 2 unpushed commits respectively)
 - Article on Developer Community, then link it from each listing
 - Demo video, then link it from each listing

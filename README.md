@@ -233,6 +233,43 @@ source_id,esa_reject_fraction,predicted_reject_fraction,prediction_sigma,n_bp,n_
 
 57,099 variable sources, `percentage_change` from ~100% to >10^21%.
 
+## Tests
+
+```bash
+tests/e2e.sh          # the pipeline, end to end
+tests/zpm_install.sh  # the IPM install, on a stock community image
+```
+
+`e2e.sh` deletes both outputs, runs `^RunScript`, and checks `result.csv` the
+way a judge would — 20 inputs, header, 57,099 rows, descending sort, the 100%
+threshold, duplicates, `min <= max`, and the `source_id` checksum shared with
+[gaia-fast](https://github.com/isc-tdyar/gaia-fast) and
+[gaia-terse](https://github.com/isc-tdyar/gaia-terse).
+
+Most of it is about `quality.csv`, because `result.csv` being right says nothing
+about the ML: it comes from a `WHERE` clause. So the tests assert that all
+74,998 sources are scored and not just the 57,099 detections, that predictions
+vary (a constant-output model passes every count-based check), that every
+`prediction_sigma` is positive, and that MAE recomputed from the file beats the
+0.0613 predict-the-mean baseline. Then a SQL probe checks
+`SQLUser.GaiaQualityScored` directly, since a complete CSV written from a
+partially-scored table would leave the agents unable to run and nothing else
+would notice.
+
+The four analysis entry points are not in `e2e.sh` — they make LLM calls, which
+is why they sit outside `^RunScript`. Their logic is covered by the `%UnitTest`
+suite (85 tests) against a null provider:
+
+```bash
+docker exec gaia-iml-iris iris session IRIS -U USER \
+  '##class(%UnitTest.Manager).RunTest("Gaia",,"ck")'
+```
+
+`Gaia`, not `UnitTest.Gaia`: `^UnitTestRoot` already points at `src/UnitTest`,
+so the argument is a path below it and the fuller name resolves to
+`src/UnitTest/UnitTest/Gaia`, which does not exist. The `"ck"` qualifier is
+required — without it the classes are found but never compiled.
+
 ## Article
 
 See [ARTICLE.md](ARTICLE.md) for the full write-up: IRISModel contract, data
