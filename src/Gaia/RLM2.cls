@@ -213,12 +213,14 @@ ClassMethod Report(outPath As %String = "", question As %String = "", title As %
         Set plan = ..ParsePlan(planText)
         Write "  plan: ", $ListToString(plan, ", "), !
 
-        // SPAWN: one SliceAnalyst subagent per planned slice. The spawn is done here
-        // rather than exposed to the root as a tool because a %AI.Tool that makes its
-        // own LLM call returns empty when the agent loop dispatches it: tool execution
-        // goes through %AI.ToolMgr.ExecuteTool into $ZF(-6), and the nested provider
-        // call inside that does not come back. Called directly, as below, the same
-        // subagent works. Verified in 2026.3.0AI.126.0 with a one-method probe tool.
+        // SPAWN: one SliceAnalyst subagent per planned slice.
+        //
+        // Called directly rather than added to the root's ToolManager for its model to
+        // invoke. %AI.Agent.SubAgent is a %AI.Tool, so that arrangement compiles and
+        // reads better, but on 2026.3.0AI.126.0 the delegation did not return when
+        // dispatched through %AI.ToolMgr.ExecuteTool, which crosses into the LLM
+        // library via $ZF(-6). Direct %Invoke works and takes about 3 seconds. Worth
+        // re-checking on a later build before restructuring.
         Set findings = ""
         For i = 1:1:$ListLength(plan) {
             Set slice = $List(plan, i)

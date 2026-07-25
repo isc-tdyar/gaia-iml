@@ -578,17 +578,13 @@ route. A full audit is 36s: 6 delegations across 8 aggregate queries.
 The trade is legible. `Gaia.RLM` costs at most 18 calls and every run has the same
 shape. `Gaia.RLM2` is bounded at 6 delegations but its plan differs run to run.
 
-One thing did not work as designed. The intent was to give the root the
-`SliceAnalyst` as a tool and let its model choose when to delegate, putting the
-recursion itself on the model's side. Delegation then hangs. `%AI.Tool`
-execution goes through `%AI.ToolMgr.ExecuteTool`, which dispatches into the Rust
-library via `$ZF(-6)`, and the subagent's own provider call inside that never comes
-back; the tool returns an empty string. Called directly, the same subagent answers
-in about 3 seconds. A one-method probe tool that does nothing but `Run()` a trivial
-prompt reproduces it, so it is not specific to `SliceAnalyst`: in
-`2026.3.0AI.126.0`, a tool that makes an LLM call cannot be driven by an agent
-loop. So the plan is the model's and the spawn is ObjectScript's, which keeps the
-interesting half and is honest about the other.
+One design note on where the spawn happens. `%AI.Agent.SubAgent` is a `%AI.Tool`,
+so the tidy-looking arrangement is to hand the root a `SliceAnalyst` and let its
+model call it whenever it wants a slice analyzed. On the preview build I was using
+that path did not return, so `Gaia.RLM2` calls the subagent from ObjectScript once
+per planned slice instead. The model still chooses the decomposition, which is the
+half I cared about; only the spawn is mine. Worth knowing if you build the same
+shape on an EAP image, and worth re-testing on a later one.
 
 What does not change is where the safety lives. Handing the decomposition to the
 model does not mean moving the constraints into the prompt. A model that names
@@ -606,7 +602,7 @@ harness: a guard that used `$Length(used, ",")` to count resolved path component
 and so passed on the empty string, because `$Length("", ",")` is 1; child tokens
 derived as "first word, lowercased", which collided into `model` four times, so
 `Resolve()` would have returned a different slice than the one the model asked for;
-and an assumption that `%AI.Tool.%Invoke()` returns a wrapped object, when it
+and a test that assumed `%AI.Tool.%Invoke()` returns a wrapped object, when it
 returns the method's own value. The other two came out of reading the first
 finished report: `%Stream.FileCharacter` defaults to the local 8-bit table, so
 every em dash the model wrote reached the file as `?`, and the analysts' own

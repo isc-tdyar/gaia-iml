@@ -102,11 +102,10 @@ name a slice but cannot express a predicate. The plan is filtered against that
 whitelist and truncated to the budget before the first spawn, not refused after
 the last one, which is what `UnitTest.Gaia.RLM2` tests without needing a provider.
 
-The spawn is performed by ObjectScript rather than exposed to the root as a tool.
-A `%AI.Tool` that makes its own LLM call returns empty when the agent loop
-dispatches it, because tool execution goes through `%AI.ToolMgr.ExecuteTool` into
-`$ZF(-6)` and the nested provider call does not return. The same subagent works
-when called directly. Verified in `2026.3.0AI.126.0`.
+The subagent is called from ObjectScript, once per planned slice, rather than
+exposed to the root as a tool for its model to invoke. That path did not return
+on the preview build used here, so the model chooses the decomposition and the
+spawn is explicit.
 
 Requires `OPENAI_API_KEY` in the environment. Without it these print the reason
 and exit, leaving `result.csv` untouched.
