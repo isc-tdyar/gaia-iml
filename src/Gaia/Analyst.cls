@@ -1,15 +1,15 @@
 /// AI Hub analyst for the Gaia variable-star pipeline.
 ///
-/// Design note: this deliberately does NOT hand the LLM a SQL toolset and let it
-/// drive. That was tried first and does not work here - %AI.Tools.SQL's
-/// ListTables returns ~50KB of namespace metadata, the tool result is re-sent on
-/// every subsequent LLM call, and gpt-4o-mini keeps re-attempting discovery until
-/// %AICore raises LoopDetected. A single ^RunScript-scale report took over five
-/// minutes and produced nothing.
+/// This does NOT hand the LLM a SQL toolset and let it drive. That was tried
+/// first and does not work here: %AI.Tools.SQL's ListTables returns ~50KB of
+/// namespace metadata, the tool result is re-sent on every subsequent LLM call,
+/// and gpt-4o-mini keeps re-attempting discovery until %AICore raises
+/// LoopDetected. A single ^RunScript-scale report took over five minutes and
+/// produced nothing.
 ///
-/// Instead the ObjectScript side runs a fixed set of aggregate queries - which is
-/// where the interesting work is anyway, since these are the queries that call
-/// PREDICT(GaiaVariability) inline - and the agent is asked once to interpret the
+/// Instead the ObjectScript side runs a fixed set of aggregate queries, which is
+/// where the interesting work is anyway since these are the queries that call
+/// PREDICT(GaiaVariability) inline, and the agent is asked once to interpret the
 /// results. Deterministic evidence, bounded cost, one LLM round-trip.
 Class Gaia.Analyst Extends %AI.Agent
 {

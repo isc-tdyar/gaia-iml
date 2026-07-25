@@ -1,0 +1,17 @@
+ROUTINE RLMTriage
+ ; Optional AI Hub deliverable #2: the same recursive-language-model engine
+ ; pointed at the challenge's own answer - the sources whose relative flux swing
+ ; exceeds 100% - to separate plausible variable stars from instrumental
+ ; artifacts. Written to data/out/rlm_triage.md.
+ ;
+ ; Kept out of ^RunScript for the same reason as ^RLMAudit: LLM latency is not
+ ; ours to control, and result.csv must not depend on it.
+ ;
+ ; Run ^RunScript first - this slices the rows that produced result.csv.
+ New outDir,report
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Write "Running Gaia.RLM triage over the variable-star detections...",!
+ Set report = ##class(Gaia.RLM).Triage(outDir_"/rlm_triage.md")
+ Write "Triage: ",outDir,"/rlm_triage.md (",$Length(report)," chars)",!
+ Quit

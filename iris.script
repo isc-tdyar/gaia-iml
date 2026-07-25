@@ -1,7 +1,10 @@
-    ; compile RunScript.mac plus the Gaia.Analyst AI Hub agent class
-    ; (LoadDir skips .mac routines, so load the entry point explicitly)
+    ; compile RunScript.mac plus the Gaia.Analyst / Gaia.RLM AI Hub agent classes
+    ; (LoadDir skips .mac routines, so load each entry point explicitly)
     do $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
     do $System.OBJ.Load("/home/irisowner/dev/src/RunScript.mac","ck")
+    do $System.OBJ.Load("/home/irisowner/dev/src/Analyze.mac","ck")
+    do $System.OBJ.Load("/home/irisowner/dev/src/RLMAudit.mac","ck")
+    do $System.OBJ.Load("/home/irisowner/dev/src/RLMTriage.mac","ck")
 
     ;disabling password expire for development purposes
     zn "%SYS"

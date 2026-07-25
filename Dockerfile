@@ -27,14 +27,37 @@ RUN apt-get update \
         --index-url https://registry.intersystems.com/pypi/simple \
         --target /usr/irissys/mgr/python \
         intersystems-iris-automl isal \
+ && /usr/irissys/bin/irispython -m pip install --no-cache-dir \
+        --target /usr/irissys/mgr/python ngboost \
  && /usr/irissys/bin/irispython -c "from isal import isal_zlib; print('isal OK')" \
+ && /usr/irissys/bin/irispython -c "from ngboost import NGBRegressor; print('ngboost OK')" \
  && chown -R irisowner:irisowner /home/irisowner/dev
 
-## Install the custom IRISModel classifier while still root — the Classifiers dir
-## is root-owned, so the later irisowner build step cannot write into it.
-RUN CDIR=$(/usr/irissys/bin/irispython -c "import os,iris_automl;print(os.path.join(os.path.dirname(iris_automl.__file__),'Classifiers'))") \
- && cp /home/irisowner/dev/gaia_variability_iris_model.py "$CDIR/" \
- && echo "custom classifier installed to $CDIR"
+## Install the custom IRISModel classifiers while still root — the Classifiers
+## dir is root-owned, so the later irisowner build step cannot write into it.
+##
+## The variability classifier goes under Classifiers/, the quality regressor
+## under Regressors/. AutoML loads the two from separate pools via separate USING
+## keys (pathtoclassifiers / pathtoregressors), and a regression target never
+## looks in Classifiers at all — it just reports NoEstimatorChosen.
+##
+## Each also gets its own subdirectory, because load_models() imports every .py
+## in the directory handed to it and would otherwise try each model on the
+## other's target.
+## The mean and sigma heads are separate files in separate directories because
+## AutoML forwards only isc_models_disabled/n_jobs/problem_type/random_state/
+## verbose into IRISModel(**kwargs) and drops any extra USING keys, so the head
+## cannot be chosen by parameter. Their shared estimator goes on the embedded
+## Python path so both can import it.
+RUN ADIR=$(/usr/irissys/bin/irispython -c "import os,iris_automl;print(os.path.dirname(iris_automl.__file__))") \
+ && mkdir -p "$ADIR/Classifiers/gaia_variability" \
+             "$ADIR/Regressors/gaia_quality_mean" \
+             "$ADIR/Regressors/gaia_quality_sigma" \
+ && cp /home/irisowner/dev/gaia_variability_iris_model.py "$ADIR/Classifiers/gaia_variability/" \
+ && cp /home/irisowner/dev/gaia_quality_mean_model.py  "$ADIR/Regressors/gaia_quality_mean/" \
+ && cp /home/irisowner/dev/gaia_quality_sigma_model.py "$ADIR/Regressors/gaia_quality_sigma/" \
+ && cp /home/irisowner/dev/gaia_quality_estimator.py /usr/irissys/mgr/python/ \
+ && echo "custom models installed under $ADIR"
 USER irisowner
 
 ## Compile the routine + agent class, then pre-train GaiaVariability so the

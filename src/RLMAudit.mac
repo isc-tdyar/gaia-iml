@@ -1,0 +1,19 @@
+ROUTINE RLMAudit
+ ; Optional AI Hub deliverable #1: a recursive-language-model (RLM) data-quality
+ ; audit over all 74,998 sources in GaiaQualityStats, written to
+ ; data/out/rlm_audit.md.
+ ;
+ ; Kept out of ^RunScript on purpose, exactly like ^Analyze: it makes LLM calls,
+ ; so its wall-clock is not ours to control, and ^RunScript is the benchmarked
+ ; entry point. Requires OPENAI_API_KEY in the container environment; without it
+ ; the report says so and result.csv is untouched.
+ ;
+ ; Run ^RunScript first - the RLM slices GaiaQualityStats and its two
+ ; materialized prediction columns, which that pipeline produces.
+ New outDir,report
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Write "Running Gaia.RLM audit (recursive, depth<=",##class(Gaia.RLM).#MAXDEPTH,", <=",##class(Gaia.RLM).#MAXCALLS," LLM calls)...",!
+ Set report = ##class(Gaia.RLM).Audit(outDir_"/rlm_audit.md")
+ Write "Audit: ",outDir,"/rlm_audit.md (",$Length(report)," chars)",!
+ Quit

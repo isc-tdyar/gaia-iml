@@ -4,8 +4,8 @@ ROUTINE RunScript
  ; 1. Embedded Python scans data/in and ingests flux stats into GaiaFluxStats
  ; 2. SQL PREDICT(GaiaVariability) scores every source alongside the
  ;    deterministic rule, and data/out/result.csv is written
- ; The AI Hub agent is deliberately NOT in this path - it makes LLM calls whose
- ; latency is not ours to control, and this routine is the benchmarked one.
+ ; The AI Hub agent is NOT in this path. It makes LLM calls whose latency is not
+ ; ours to control, and this routine is the benchmarked one.
  ; Run it separately with: do ^Analyze
  New inDir,outDir,startTime,cmd,rc,elapsed
  Set inDir = "/home/irisowner/dev/data/in"
