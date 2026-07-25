@@ -104,8 +104,9 @@ the last one, which is what `UnitTest.Gaia.RLM2` tests without needing a provide
 
 The subagent is called from ObjectScript, once per planned slice, rather than
 exposed to the root as a tool for its model to invoke. That path did not return
-on the preview build used here, so the model chooses the decomposition and the
-spawn is explicit.
+on the preview build used here once the child had tools of its own
+([ai-hub-eap#26](https://github.com/intersystems-community/ai-hub-eap/issues/26)),
+so the model chooses the decomposition and the spawn is explicit.
 
 Requires `OPENAI_API_KEY` in the environment. Without it these print the reason
 and exit, leaving `result.csv` untouched.

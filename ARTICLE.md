@@ -581,10 +581,11 @@ shape. `Gaia.RLM2` is bounded at 6 delegations but its plan differs run to run.
 One design note on where the spawn happens. `%AI.Agent.SubAgent` is a `%AI.Tool`,
 so the tidy-looking arrangement is to hand the root a `SliceAnalyst` and let its
 model call it whenever it wants a slice analyzed. On the preview build I was using
-that path did not return, so `Gaia.RLM2` calls the subagent from ObjectScript once
-per planned slice instead. The model still chooses the decomposition, which is the
-half I cared about; only the spawn is mine. Worth knowing if you build the same
-shape on an EAP image, and worth re-testing on a later one.
+that path did not return once the child had tools of its own, so `Gaia.RLM2` calls
+the subagent from ObjectScript once per planned slice instead. The model still
+chooses the decomposition, which is the half I cared about; only the spawn is mine.
+Reduced to a two-class repro and filed against the EAP image; worth re-testing on
+a later build before you copy the workaround.
 
 What does not change is where the safety lives. Handing the decomposition to the
 model does not mean moving the constraints into the prompt. A model that names

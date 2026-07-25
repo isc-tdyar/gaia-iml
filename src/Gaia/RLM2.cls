@@ -217,10 +217,11 @@ ClassMethod Report(outPath As %String = "", question As %String = "", title As %
         //
         // Called directly rather than added to the root's ToolManager for its model to
         // invoke. %AI.Agent.SubAgent is a %AI.Tool, so that arrangement compiles and
-        // reads better, but on 2026.3.0AI.126.0 the delegation did not return when
-        // dispatched through %AI.ToolMgr.ExecuteTool, which crosses into the LLM
-        // library via $ZF(-6). Direct %Invoke works and takes about 3 seconds. Worth
-        // re-checking on a later build before restructuring.
+        // reads better, but on 2026.3.0AI Build 126U it hangs: a tool that spawns a
+        // child agent never returns when the parent's own loop dispatches it, and only
+        // when the child has tools attached. A child with no tools is fine through the
+        // parent's loop, and this same child is fine called from here, in about 3
+        // seconds. Reported as ai-hub-eap#26; re-check before restructuring.
         Set findings = ""
         For i = 1:1:$ListLength(plan) {
             Set slice = $List(plan, i)
