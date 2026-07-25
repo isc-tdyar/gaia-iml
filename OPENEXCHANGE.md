@@ -21,10 +21,12 @@ submitting: OEX reads the manifest and README from the public default branch.
   flux and per-epoch quality statistics into IRIS, then scores every source with
   SQL `PREDICT()` against two custom NGBoost `IRISModel` regressors predicting
   ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end.
-- **Caveat to state on the listing:** requires the ISC-internal AI Hub image
-  (`docker.iscinternal.com`), so external users cannot build it without ISC
-  network access. Worth saying plainly in the listing body rather than letting
-  people discover it at `docker compose up`.
+- **Caveat to state on the listing:** the full entry requires the ISC-internal AI
+  Hub image (`docker.iscinternal.com`), so external users cannot build it without
+  ISC network access. Worth saying plainly in the listing body rather than letting
+  people discover it at `docker compose up`. An IPM install on a stock community
+  image gets `^RunScript` and the IntegratedML models and prints which classes it
+  skipped; the AI Hub and RLM reports need the preview image.
 
 ## gaia-fast
 
@@ -57,11 +59,34 @@ submitting: OEX reads the manifest and README from the public default branch.
 
 Done for all three:
 
-- `zpm load <repo>` succeeds in the container (this is what caught `<Author>`,
-  `<Publisher>` and `<Keywords>` being wrong in every manifest, and the missing
-  `SourcesRoot`/`Resource` entries that made a successful install a no-op)
+- `zpm load <repo>` succeeds on `intersystemsdc/iris-community:2026.1`, and
+  `^RunScript` is compiled and callable afterwards. Run it with
+  `gaia-iml/tests/zpm_install.sh`.
+
+  This check was listed as done here before it had ever run. None of the three
+  project containers has IPM installed at all — `%IPM.Main` and
+  `%ZPM.PackageManager` are both absent from the AI-preview and the project
+  images — so every earlier claim about `zpm load` was inference from reading the
+  manifests. Running it for real on a public community image passed `gaia-fast`
+  and `gaia-terse` and failed `gaia-iml` twice over: an unresolvable `rlm-core`
+  dependency aborted the load before compiling anything, and with that removed
+  six classes failed on `%AI.Agent`/`RLM.Source.Table` not existing, taking
+  `^RunScript` down with them. `Gaia.Install` now gates the analysis layer, and
+  the gate script is the regression test.
+
 - `module.xml` declares Name, Version, Author, License, SourcesRoot, Resources,
   Keywords
+- **The three cannot be installed into one namespace at once.** All three ship
+  `RunScript.MAC`, and IPM refuses a second claim on a resource:
+
+  ```text
+  ERROR #5001: Resource 'RunScript.MAC' is already defined as part of module 'gaia-fast'
+  ```
+
+  That is correct behaviour — they are three answers to one challenge, not
+  components — but it is worth one line on each listing so nobody reads it as a
+  broken package.
+
 - MIT `LICENSE` present
 - README covers prerequisites, data download, quick start, output format
 - `markdownlint-cli2` and `prettier` clean

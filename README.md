@@ -185,6 +185,36 @@ Override the base image with
 `docker compose build --build-arg IMAGE=<your local tag>` if you pulled the AI
 preview tarball from evaluation.intersystems.com instead.
 
+### Installing with IPM
+
+```objectscript
+zpm "load /path/to/gaia-iml"
+```
+
+Docker is the supported route, and the only one that gets a full run: `^RunScript`
+shells out to `irispython` against fixed paths under `/home/irisowner/dev`, which
+an IPM install does not create. What `zpm load` gives you is the routines and the
+models on an instance you already have.
+
+On an image without AI Hub or `lib/rlm-core`, the install compiles `^RunScript`
+and prints what it left out:
+
+```text
+[gaia-iml] analysis layer skipped: %AI.Agent, %AI.Tool, RLM.Source.Table,
+  RLM.Slice not present on this instance.
+```
+
+`Gaia.Install` decides that at activation. `module.xml` deliberately does not list
+`Gaia.PKG` — six classes there extend `%AI.Agent`, `%AI.Tool` or
+`RLM.Source.Table`, and listing the package makes the whole module fail to install
+on any stock image, `^RunScript` included, for the sake of a bonus feature.
+`tests/zpm_install.sh` is the check, run against
+`intersystemsdc/iris-community:2026.1`.
+
+Nor does it declare a `<Dependencies>` entry for `rlm-core`: the library is not
+published to a registry, so naming it aborts the load before a line is compiled.
+The submodule above is how it arrives.
+
 ## Output Format
 
 `result.csv` is the challenge answer:

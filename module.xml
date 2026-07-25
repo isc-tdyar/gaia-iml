@@ -12,24 +12,29 @@
       </Author>
       <Packaging>module</Packaging>
       <SourcesRoot>src</SourcesRoot>
-      <Resource Name="Gaia.PKG"/>
-      <Resource Name="UnitTest.Gaia.PKG"/>
+      <!-- The contest path, and everything that compiles on a stock image.
+           `Gaia.PKG` is deliberately NOT listed: Gaia.Analyst, Gaia.RLM,
+           Gaia.RLM2, Gaia.Source and the tool classes extend %AI.Agent,
+           %AI.Tool or RLM.Source.Table, none of which exist outside the 2026.3
+           AI preview image with lib/rlm-core loaded. Listing the package makes
+           `zpm load` fail on six missing superclasses, and takes ^RunScript
+           (which depends on none of them) down with it. Gaia.Install has no
+           superclass, so it compiles anywhere, and loads the rest where it can. -->
+      <Resource Name="Gaia.Install.CLS"/>
       <Resource Name="RunScript.MAC"/>
       <Resource Name="Analyze.MAC"/>
       <Resource Name="RLMAudit.MAC"/>
       <Resource Name="RLMTriage.MAC"/>
       <Resource Name="RLM2Audit.MAC"/>
       <Keywords>IntegratedML,custom-models,AI-Hub,gaia,variable-stars,astronomy,embedded-python,PREDICT,NGBoost,machine-learning</Keywords>
-      <!-- The RLM analysis classes come from rlm-core. In the container the
-           library arrives as the lib/rlm-core submodule, because the 2026.3 AI
-           preview image ships no package manager; this entry is for anyone
-           installing on an image that has one. Both routes name one version. -->
-      <Dependencies>
-        <ModuleReference>
-          <Name>rlm-core</Name>
-          <Version>0.0.*</Version>
-        </ModuleReference>
-      </Dependencies>
+      <!-- No <Dependencies> on rlm-core. It is not published to any registry and
+           its repository is private, so naming it aborts the load before a line
+           is compiled: `Could not find satisfactory version of rlm-core`. In the
+           container it arrives as the lib/rlm-core submodule, which is the
+           supported route and the one the README documents. -->
+      <Invoke Class="Gaia.Install" Method="OnActivate" CheckStatus="1" Phase="Activate">
+        <Arg>${root}</Arg>
+      </Invoke>
     </Module>
   </Document>
 </Export>
