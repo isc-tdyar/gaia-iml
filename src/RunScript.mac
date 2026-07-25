@@ -2,8 +2,8 @@ ROUTINE RunScript
  ; Gaia DR3 variable star detection - IntegratedML + AI Hub entry.
  ; Judges invoke "do ^RunScript", which enters here at the top line.
  ; 1. Embedded Python scans data/in and ingests flux stats into GaiaFluxStats
- ; 2. SQL PREDICT(GaiaVariability) scores every source alongside the
- ;    deterministic rule, and data/out/result.csv is written
+ ; 2. data/out/result.csv is written from the deterministic rule, and
+ ;    PREDICT() on the custom quality models writes data/out/quality.csv
  ; The AI Hub agent is NOT in this path. It makes LLM calls whose latency is not
  ; ours to control, and this routine is the benchmarked one.
  ; Run it separately with: do ^Analyze

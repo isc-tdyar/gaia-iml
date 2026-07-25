@@ -89,14 +89,13 @@ ps=sorted(os.path.join(D,f)for f in os.listdir(D)if f.startswith("EpochPhotometr
 # One worker per core: this is CPU-bound (inflate + float parsing), so
 # oversubscribing adds context-switching and memory pressure for nothing.
 rows=[r for rs in ProcessPoolExecutor(max_workers=max(1,min(len(ps),os.cpu_count()or 4)),mp_context=FK).map(S,ps)for r in rs]
-for sql in("DROP TABLE IF EXISTS GaiaFluxStats","CREATE TABLE GaiaFluxStats (source_id BIGINT,bp_min DOUBLE,bp_max DOUBLE,rp_min DOUBLE,rp_max DOUBLE,n_bp INTEGER,n_rp INTEGER,pct_change DOUBLE,is_variable INTEGER)"):
+for sql in("DROP TABLE IF EXISTS GaiaFluxStats","CREATE TABLE GaiaFluxStats (source_id BIGINT,bp_min DOUBLE,bp_max DOUBLE,rp_min DOUBLE,rp_max DOUBLE,n_bp INTEGER,n_rp INTEGER,pct_change DOUBLE)"):
  iris.sql.exec(sql)
-stmt=iris.sql.prepare("INSERT INTO GaiaFluxStats VALUES (?,?,?,?,?,?,?,?,?)")
-for r in rows:stmt.execute(r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7],1 if r[7]>100 else 0)
+stmt=iris.sql.prepare("INSERT INTO GaiaFluxStats VALUES (?,?,?,?,?,?,?,?)")
+for r in rows:stmt.execute(r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7])
 # GaiaQualityStats feeds the NGBoost custom model. reject_fraction comes from
-# ESA's own per-epoch variability_flag_*_reject arrays, so unlike is_variable it
-# is not derivable from the columns we train on - there is something real to
-# learn. Sources with no flag data at all are excluded: a target of 0.0 there
+# ESA's own per-epoch variability_flag_*_reject arrays, so it is not derivable
+# from the columns we train on - there is something real to learn. Sources with no flag data at all are excluded: a target of 0.0 there
 # would mean "ESA rejected nothing", not "ESA said nothing".
 for sql in("DROP TABLE IF EXISTS GaiaQualityStats","CREATE TABLE GaiaQualityStats (source_id BIGINT,n_bp INTEGER,n_rp INTEGER,bp_snr DOUBLE,rp_snr DOUBLE,bp_cv DOUBLE,rp_cv DOUBLE,bp_min DOUBLE,bp_max DOUBLE,rp_min DOUBLE,rp_max DOUBLE,pct_change DOUBLE,reject_fraction DOUBLE)"):
  iris.sql.exec(sql)
@@ -105,21 +104,16 @@ nq=0
 for r in rows:
  if r[13]:qs.execute(r[0],r[5],r[6],r[8],r[9],r[10],r[11],r[1],r[2],r[3],r[4],r[7],r[12]);nq+=1
 print(f"{nq} sources with ESA epoch-quality flags -> GaiaQualityStats")
-trained={r[0]for r in iris.sql.exec("SELECT * FROM INFORMATION_SCHEMA.ML_TRAINED_MODELS")}
-if"GaiaVariability"not in trained:iris.sql.exec("TRAIN MODEL GaiaVariability")
-# result.csv is the deterministic answer to the challenge: every source whose
-# relative flux swing exceeds 100%. PREDICT() runs alongside it rather than
-# gating it. The model is a learned approximation of that rule and recovers only
-# 57.7% of the true positives (32,946 of 57,099), having been trained on a
-# synthetic distribution, so filtering on it would emit a badly wrong answer.
-rs=iris.sql.exec("SELECT source_id,bp_min,bp_max,rp_min,rp_max,pct_change,PREDICT(GaiaVariability) AS p FROM GaiaFluxStats WHERE pct_change>100 ORDER BY pct_change DESC")
+# result.csv is the challenge answer: every source whose relative flux swing
+# exceeds 100%. This is a SQL predicate, exactly computable, so there is nothing
+# to predict - the IntegratedML work is the quality models below, which target
+# something a WHERE clause cannot produce.
+rs=iris.sql.exec("SELECT source_id,bp_min,bp_max,rp_min,rp_max,pct_change FROM GaiaFluxStats WHERE pct_change>100 ORDER BY pct_change DESC")
 out=list(rs)
 hdr="source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change\n"
 buf=hdr+"".join(f"{r[0]},{float(r[1]):.6f},{float(r[2]):.6f},{float(r[3]):.6f},{float(r[4]):.6f},{float(r[5]):.4f}\n"for r in out)
 os.makedirs(O,exist_ok=True);open(os.path.join(O,"result.csv"),"w").write(buf)
-agree=sum(1 for r in out if int(r[6])==1)
 print(f"{len(out)} variable sources -> {O}/result.csv")
-print(f"PREDICT(GaiaVariability) recall on them: {agree}/{len(out)} ({100.0*agree/max(1,len(out)):.2f}%)")
 
 # Second output: the IntegratedML deliverable proper. Both PREDICT() calls are
 # backed by the same NGBoost model file - one returns the distribution mean, the
@@ -131,7 +125,10 @@ try:
  # and never returns - measured, 2,000 rows alone did not finish in 100s, while
  # the same two PREDICT()s in the SELECT list take 0.2s. Sort the small result in
  # Python instead.
- qr=sorted(iris.sql.exec("SELECT source_id,reject_fraction,PREDICT(GaiaDataQuality) AS pred,PREDICT(GaiaQualityUncertainty) AS sigma,n_bp,n_rp,pct_change FROM GaiaQualityStats"),key=lambda r:float(r[2]),reverse=True)
+ # source_id breaks ties: thousands of rows share a predicted value at 4 decimal
+ # places, so sorting on pred alone leaves their order down to however SQL
+ # returned them and the file reshuffles between runs for no real reason.
+ qr=sorted(iris.sql.exec("SELECT source_id,reject_fraction,PREDICT(GaiaDataQuality) AS pred,PREDICT(GaiaQualityUncertainty) AS sigma,n_bp,n_rp,pct_change FROM GaiaQualityStats"),key=lambda r:(-float(r[2]),int(r[0])))
  qb="source_id,esa_reject_fraction,predicted_reject_fraction,prediction_sigma,n_bp,n_rp,percentage_change\n"+"".join(f"{r[0]},{float(r[1]):.4f},{float(r[2]):.4f},{float(r[3]):.4f},{r[4]},{r[5]},{float(r[6]):.4f}\n"for r in qr)
  open(os.path.join(O,"quality.csv"),"w").write(qb)
  # Materialize the two predictions into stored columns, as GaiaQualityScored. The

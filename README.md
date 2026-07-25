@@ -5,9 +5,8 @@ InterSystems Employee Programming Challenge #1
 Detects variable stars in Gaia DR3 epoch photometry using **IntegratedML Custom
 Models** running inside IRIS via AI Hub. Scans 20 gzipped epoch photometry files,
 ingests flux and quality statistics into SQL tables, then scores every source with
-`PREDICT()` calls backed by three custom `IRISModel` files: a
-`GradientBoostingClassifier` for variability and two NGBoost heads for data
-quality.
+`PREDICT()` calls backed by two custom `IRISModel` files: NGBoost heads
+predicting data quality and its uncertainty.
 
 **~11 seconds** end-to-end. Targets Python (+3) and AI Hub (+3) contest bonuses.
 
@@ -22,54 +21,54 @@ access.
 2. Parallel streaming scan extracts BP/RP flux, flux-error and ESA reject-flag
    arrays from 20 `.gz` files
 3. Inserts 74,998 rows into `GaiaFluxStats` and `GaiaQualityStats`
-4. `PREDICT(GaiaVariability)` scores every row using the pre-trained GBT model
-5. Writes `result.csv`: every source with `pct_change > 100`, sorted descending
-6. `PREDICT(GaiaDataQuality)` and `PREDICT(GaiaQualityUncertainty)` write
+4. Writes `result.csv`: every source with `pct_change > 100`, sorted descending
+5. `PREDICT(GaiaDataQuality)` and `PREDICT(GaiaQualityUncertainty)` write
    `quality.csv` and materialize `GaiaQualityScored`
 
-`result.csv` comes from the deterministic rule. The variability model reproduces
-that rule at 57.7% recall, so filtering on it would emit a wrong answer. The
-prediction is reported next to the rule instead.
+`result.csv` comes from the deterministic rule, not from a model. The challenge
+asks for every source whose relative flux swing exceeds 100%, which SQL computes
+exactly, so a model there could only approximate a known answer. The IntegratedML
+work goes where a `WHERE` clause cannot reach.
 
 ## The Custom IRISModels
 
 ```python
-# gaia_variability_iris_model.py
-from sklearn.ensemble import GradientBoostingClassifier
+# gaia_quality_mean_model.py
+from gaia_quality_estimator import NGBoostQualityEstimator
 
 class IRISModel:
     def __init__(self, **kwargs):
-        self.name  = "gaia_epoch_variability_detector"
-        self.model = GradientBoostingClassifier(
-            n_estimators=int(kwargs.get("n_estimators", 100)),
-            max_depth=int(kwargs.get("max_depth", 3)),
+        self.name  = "gaia_data_quality_ngboost_mean"
+        self.model = NGBoostQualityEstimator(
+            n_estimators=int(kwargs.get("n_estimators", 300)),
+            learning_rate=float(kwargs.get("learning_rate", 0.01)),
+            predict_output="mean",
         )
         # Do NOT implement fit() or predict(). IntegratedML calls self.model directly.
 ```
 
 Registered via `CREATE MODEL ... USING {"iscmodelsdisabled":1,
-"pathtoclassifiers":"<automl_root>/Classifiers/gaia_variability"}`. The quality
-models use `pathtoregressors` instead: classification and regression candidates
-come from separate pools, and a numeric target never looks in the classifier pool.
+"pathtoregressors":"<automl_root>/Regressors/gaia_quality_mean"}`.
+`pathtoregressors` for a numeric target, `pathtoclassifiers` for a categorical
+one: the two candidate pools are separate, and a numeric target never looks in
+the classifier pool. Each model gets its own subdirectory, because `load_models()`
+imports every `.py` in the directory it is handed.
 
-`GaiaVariability` is here to demonstrate the custom-classifier path. Its target
-`is_variable` is the `pct_change > 100` rule itself, and it trains on rows
-synthesized from that rule, so the best it can do is approximate something SQL
-already computes exactly.
+NGBoost is not scikit-learn compatible out of the box, which is the interesting
+part: `gaia_quality_estimator.py` wraps it in a `fit`/`predict` shim, and that is
+all IntegratedML needs.
 
-The NGBoost pair is the model with a real job. It predicts `reject_fraction`, the
-share of a source's epochs that ESA's own variability pipeline rejected. That
-target is not derivable from the features, so there is something to learn: MAE
-0.0432 against 0.0613 for predicting the mean, 30% better, with a per-row error
-bar from the sigma head.
+The pair predicts `reject_fraction`, the share of a source's epochs that ESA's own
+variability pipeline rejected. That target is not derivable from the features, so
+there is something to learn: MAE 0.0432 against 0.0613 for predicting the mean,
+30% better, with a per-row error bar from the sigma head.
 
 ## Pre-Training Strategy
 
-Training all three models takes ~33s, paid once at `docker build` time by
-`pretrain_gaia_model.py`. `GaiaVariability` trains on 2,500 synthetic rows;
-the quality models train on `quality_train.csv.gz`, a real 5,344-source extract.
-At runtime `run_embedded_iml.py` checks `INFORMATION_SCHEMA.ML_TRAINED_MODELS` and
-skips training.
+Training both models takes ~33s, paid once at `docker build` time by
+`pretrain_gaia_model.py`, from `quality_train.csv.gz`, a real 5,344-source
+extract. At runtime the models are already trained, so `run_embedded_iml.py` goes
+straight to `PREDICT()`.
 
 ## AI Hub Agents
 
@@ -84,7 +83,7 @@ not ours to control:
 | `do ^RLM2Audit` | `data/out/rlm2_audit.md` | Same audit, model-driven RLM    |
 
 `Gaia.Analyst` runs a fixed set of aggregate queries, several of which call
-`PREDICT(GaiaVariability)` inline, then asks the agent once to interpret them.
+`PREDICT(GaiaDataQuality)` inline, then asks the agent once to interpret them.
 
 `Gaia.RLM` is a recursive language model over `GaiaQualityScored`. The data is
 never placed in a prompt: each call receives only aggregate statistics for its

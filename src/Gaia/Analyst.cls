@@ -9,8 +9,8 @@
 ///
 /// Instead the ObjectScript side runs a fixed set of aggregate queries, which is
 /// where the interesting work is anyway since these are the queries that call
-/// PREDICT(GaiaVariability) inline, and the agent is asked once to interpret the
-/// results. Deterministic evidence, bounded cost, one LLM round-trip.
+/// PREDICT() on the custom quality models inline, and the agent is asked once to
+/// interpret the results. Deterministic evidence, bounded cost, one LLM round-trip.
 Class Gaia.Analyst Extends %AI.Agent
 {
 
@@ -25,7 +25,7 @@ XData INSTRUCTIONS [ MimeType = text/markdown ]
 # Gaia Variable Star Analyst
 
 You are an astronomer interpreting Gaia DR3 epoch photometry that has been loaded
-into InterSystems IRIS and classified by an IntegratedML model.
+into InterSystems IRIS and scored by custom IntegratedML models.
 
 ## The data
 
@@ -38,12 +38,13 @@ Table `SQLUser.GaiaFluxStats`, one row per Gaia source:
 | `rp_min`, `rp_max` | min/max RP-band flux across all epochs |
 | `n_bp`, `n_rp` | number of usable epochs per band |
 | `pct_change` | largest relative flux swing, in percent |
-| `is_variable` | heuristic label (`pct_change` > 100) used to train the model |
 
-`GaiaVariability` is a custom IntegratedML model (a scikit-learn
-`GradientBoostingClassifier` supplied through the `IRISModel` contract) trained on
-this table. `PREDICT(GaiaVariability)` returns 1 for a variable source and works
-inline in both the SELECT list and WHERE.
+`GaiaQualityStats` holds the same sources with per-epoch quality statistics and
+`reject_fraction`, the share of epochs ESA's own pipeline rejected.
+`GaiaDataQuality` and `GaiaQualityUncertainty` are custom IntegratedML models
+(NGBoost, supplied through the `IRISModel` contract) predicting that fraction and
+its standard deviation. `PREDICT()` on either works inline in both the SELECT
+list and WHERE.
 
 ## Your job
 
@@ -65,7 +66,7 @@ Return **only** GitHub-flavored Markdown, no preamble, starting with
 - a short findings summary using the real numbers you were given
 - a `### Likely artifacts` section quantifying the contamination
 - a `### Method` section noting that the figures come from SQL aggregates in
-  which `PREDICT(GaiaVariability)` was evaluated inline
+  which `PREDICT(GaiaDataQuality)` was evaluated inline
 
 Never invent a number. Use only the values provided. If a figure you would like
 to cite is not among them, say so rather than estimating.
@@ -79,10 +80,10 @@ ClassMethod Queries() As %DynamicArray
     Quit [
         {"label":"Total sources ingested",
          "sql":"SELECT COUNT(*) AS total FROM SQLUser.GaiaFluxStats"},
-        {"label":"Sources the model calls variable",
-         "sql":"SELECT COUNT(*) AS predicted_variable FROM SQLUser.GaiaFluxStats WHERE PREDICT(GaiaVariability) = 1"},
-        {"label":"Model vs heuristic agreement",
-         "sql":"SELECT is_variable, PREDICT(GaiaVariability) AS predicted, COUNT(*) AS n FROM SQLUser.GaiaFluxStats GROUP BY is_variable, PREDICT(GaiaVariability)"},
+        {"label":"Predicted data quality, survey-wide",
+         "sql":"SELECT COUNT(*) AS n, AVG(PREDICT(GaiaDataQuality)) AS avg_pred_reject, AVG(reject_fraction) AS avg_esa_reject FROM SQLUser.GaiaQualityStats"},
+        {"label":"Where the quality model is least certain",
+         "sql":"SELECT COUNT(*) AS n_high_sigma, AVG(PREDICT(GaiaDataQuality)) AS avg_pred_reject FROM SQLUser.GaiaQualityStats WHERE PREDICT(GaiaQualityUncertainty) > 0.1"},
         {"label":"Flux swing distribution among variables",
          "sql":"SELECT COUNT(*) AS n, MIN(pct_change) AS min_pct, AVG(pct_change) AS avg_pct, MAX(pct_change) AS max_pct FROM SQLUser.GaiaFluxStats WHERE pct_change > 100"},
         {"label":"Variables with a near-zero minimum flux (relative change explodes)",
@@ -147,12 +148,9 @@ ClassMethod Report(outPath As %String = "") As %String
             _$Char(10,10)_"The IntegratedML pipeline and `result.csv` are unaffected."
             _$Char(10)
     }
-    If outPath '= "" {
-        Set file = ##class(%Stream.FileCharacter).%New()
-        Do file.LinkToFile(outPath)
-        Do file.Write(report)
-        Do file.%Save()
-    }
+    // WriteReport, not a bare stream: %Stream.FileCharacter defaults to the local
+    // 8-bit table, which turns the model's em dashes and Greek letters into "?".
+    If outPath '= "" { Do ##class(Gaia.RLM2).WriteReport(outPath, report) }
     Quit report
 }
 

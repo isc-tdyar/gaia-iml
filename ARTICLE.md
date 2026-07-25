@@ -44,23 +44,25 @@ One Python file. One class named `IRISModel`. Two required attributes:
 IntegratedML handles feature scaling, encoding and correlation reduction, then
 calls `self.model.fit(X, y)` and `self.model.predict(X)` in-process.
 
-The complete model file for this project:
+The complete model file for one of the two heads:
 
 ```python
-# gaia_variability_iris_model.py
+# gaia_quality_mean_model.py
 
-from sklearn.ensemble import GradientBoostingClassifier
+from gaia_quality_estimator import NGBoostQualityEstimator
 
 
 class IRISModel:
     def __init__(self, **kwargs):
         # kwargs arrive from the USING clause in CREATE MODEL
-        self.name  = "gaia_epoch_variability_detector"
-        self.model = GradientBoostingClassifier(
-            n_estimators  = int(kwargs.get("n_estimators", 100)),
-            max_depth     = int(kwargs.get("max_depth", 3)),
-            learning_rate = float(kwargs.get("learning_rate", 0.1)),
-            random_state  = kwargs.get("random_state", 42),
+        self.name       = "gaia_data_quality_ngboost_mean"
+        self.model_type = "NGBoost Natural Gradient Boosting (predictive mean)"
+        self.package    = "ngboost"
+        self.model = NGBoostQualityEstimator(
+            n_estimators   = int(kwargs.get("n_estimators", 300)),
+            learning_rate  = float(kwargs.get("learning_rate", 0.01)),
+            random_state   = kwargs.get("random_state", 42),
+            predict_output = "mean",
         )
         # Do NOT implement fit() or predict() on IRISModel.
         # IntegratedML calls self.model.fit(X, y) directly.
@@ -69,34 +71,43 @@ class IRISModel:
 The SQL side tells IRIS where to find this file and to use it exclusively:
 
 ```sql
-CREATE MODEL GaiaVariability PREDICTING (is_variable)
-WITH (bp_min NUMERIC, bp_max NUMERIC, rp_min NUMERIC, rp_max NUMERIC,
-      n_bp NUMERIC, n_rp NUMERIC)
-FROM GaiaFluxStats
+CREATE MODEL GaiaDataQuality PREDICTING (reject_fraction)
+WITH (n_bp NUMERIC, n_rp NUMERIC, bp_snr NUMERIC, rp_snr NUMERIC,
+      bp_cv NUMERIC, rp_cv NUMERIC, bp_min NUMERIC, bp_max NUMERIC,
+      rp_min NUMERIC, rp_max NUMERIC)
+FROM GaiaQualityStats
 USING {
     "iscmodelsdisabled": 1,
-    "pathtoclassifiers": "<automl_root>/Classifiers/gaia_variability"
+    "pathtoregressors": "<automl_root>/Regressors/gaia_quality_mean"
 };
 ```
 
 `iscmodelsdisabled: 1` skips IntegratedML's built-in AutoML candidates.
-`pathtoclassifiers` points at the directory holding
-`gaia_variability_iris_model.py`. Resolve that directory by importing the
+`pathtoregressors` points at the directory holding
+`gaia_quality_mean_model.py`. Resolve that directory by importing the
 package (`os.path.dirname(iris_automl.__file__)`) rather than globbing for it:
 the install prefix differs across IRIS images, and a missed glob yields a
-`pathtoclassifiers` of `"None"` that fails deep inside `TRAIN MODEL`.
+path of `"None"` that fails deep inside `TRAIN MODEL`.
+
+Use `pathtoregressors` for a numeric target and `pathtoclassifiers` for a
+categorical one. The two pools are separate, and a numeric target never consults
+the classifier pool at all: it reports `NoEstimatorChosen` once the built-in
+candidates are off.
 
 Give each model its own subdirectory. `load_models()` imports every `.py` in the
 directory it is handed, so two models sharing a directory means AutoML tries
 each one on the other's target.
 
-The explicit `WITH` list matters here. `is_variable` is defined as `pct_change >
-100`, so leaving `pct_change` in the feature set leaks the target: the first
-version predicted variable for all 74,998 real rows, including the 17,899 with
-`pct_change <= 100`.
+The explicit `WITH` list matters here too, for a different reason than leakage.
+`pct_change` is left out deliberately: it is the challenge's answer column, so
+keeping it out makes the quality score independent evidence rather than a
+restatement of `result.csv`.
 
-Any scikit-learn compatible estimator works: `RandomForestClassifier`,
-`LGBMClassifier`, even TabPFN. Swap the class, retrain.
+Any scikit-learn compatible estimator works. NGBoost is not one out of the box,
+which is the interesting part: `gaia_quality_estimator.py` wraps it in a
+`fit`/`predict` shim, and that is all IntegratedML needs. A
+`RandomForestRegressor` or `LGBMRegressor` would drop straight in. Swap the
+class, retrain.
 
 ---
 
@@ -201,58 +212,64 @@ iris.sql.exec("""
         bp_min     DOUBLE,  bp_max DOUBLE,
         rp_min     DOUBLE,  rp_max DOUBLE,
         n_bp       INTEGER, n_rp   INTEGER,
-        pct_change DOUBLE,
-        is_variable INTEGER
+        pct_change DOUBLE
     )
 """)
-stmt = iris.sql.prepare("INSERT INTO GaiaFluxStats VALUES (?,?,?,?,?,?,?,?,?)")
+stmt = iris.sql.prepare("INSERT INTO GaiaFluxStats VALUES (?,?,?,?,?,?,?,?)")
 for r in rows:
-    stmt.execute(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
-                 1 if r[7] > 100 else 0)
+    stmt.execute(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7])
 ```
 
 `iris.sql` is the embedded Python SQL interface. No TCP, no serialization: every
 INSERT writes directly into shared memory at the same speed as ObjectScript.
 
-### Step 3: Train the Custom Model
+A second table, `GaiaQualityStats`, takes the per-epoch quality statistics and
+`reject_fraction` for the sources that have ESA flag data. That is what the
+models train on.
 
-```python
-trained = {r[0] for r in iris.sql.exec(
-    "SELECT * FROM INFORMATION_SCHEMA.ML_TRAINED_MODELS"
-)}
-if "GaiaVariability" not in trained:
-    iris.sql.exec("TRAIN MODEL GaiaVariability")
-```
-
-On first run, `TRAIN MODEL` loads `gaia_variability_iris_model.py`, instantiates
-`IRISModel`, applies IntegratedML's own preprocessing (scaling, correlation
-reduction), then calls `self.model.fit(X, y)`, all inside the IRIS process.
-
-The check against `ML_TRAINED_MODELS` matters. `RunScript` is called every
-time the judge evaluates the container, and the model is pre-trained at
-container init time (see below), so this branch is taken zero times during
-judging.
-
-### Step 4: Query with PREDICT()
+### Step 3: Write result.csv
 
 ```python
 rs = iris.sql.exec("""
-    SELECT source_id, bp_min, bp_max, rp_min, rp_max, pct_change,
-           PREDICT(GaiaVariability) AS p
+    SELECT source_id, bp_min, bp_max, rp_min, rp_max, pct_change
     FROM GaiaFluxStats
     WHERE pct_change > 100
     ORDER BY pct_change DESC
 """)
-out = list(rs)
-agree = sum(1 for r in out if int(r[6]) == 1)
 ```
 
-`PREDICT(GaiaVariability)` calls `self.model.predict()` on each row: the trained
-GBT running in-process, returning 1 for variable, 0 for stable. It runs
-alongside the `WHERE` clause rather than replacing it. The model is a learned
-approximation of the threshold rule and drops about 1% of true positives, so
-filtering on it would emit a subtly wrong answer; `agree` reports its recall
-instead.
+No `PREDICT()` here, on purpose. The challenge asks for every source whose
+relative flux swing exceeds 100%, which is a SQL predicate that computes the
+answer exactly. A model can only approximate it, so putting one in this path
+would trade a correct answer for a worse one. The IntegratedML work goes where a
+`WHERE` clause cannot reach.
+
+### Step 4: Query with PREDICT()
+
+```python
+qr = iris.sql.exec("""
+    SELECT source_id, reject_fraction,
+           PREDICT(GaiaDataQuality)        AS pred,
+           PREDICT(GaiaQualityUncertainty) AS sigma,
+           n_bp, n_rp, pct_change
+    FROM GaiaQualityStats
+""")
+```
+
+`PREDICT(GaiaDataQuality)` calls `self.model.predict()` on each row: NGBoost
+running in-process, returning the predicted share of a source's epochs that
+ESA's pipeline rejected. The second call returns that prediction's standard
+deviation, so every row carries its own error bar.
+
+Two `PREDICT()` calls, two models, one pass over the table, no data leaving the
+database. MAE 0.0432 against 0.0613 for predicting the mean, 30% better.
+
+Two things not to do. Do not put `PREDICT()` in an `ORDER BY`: it is re-invoked
+per row-comparison and effectively never returns, measured at 2,000 rows not
+finishing in 100s, while the same two calls in the SELECT list take 0.2s. Sort
+the result in Python instead. And when a `PREDICT()` result is needed
+repeatedly, materialize it into a stored column once (`GaiaQualityScored` here)
+rather than re-evaluating the model per query.
 
 ---
 
@@ -271,14 +288,11 @@ RUN --mount=type=bind,src=.,dst=. \
     iris stop IRIS quietly safely
 ```
 
-`GaiaVariability` trains on 2,500 synthetic rows (2,000 stable, 500 variable)
-covering the feature range, then the synthetic table is dropped. The two NGBoost
-quality models train on `quality_train.csv.gz`, a real 5,344-source extract from
-archive file 1. The split is on purpose: synthetic rows for
-`reject_fraction` would be generated from a rule I invented, which is the same
-leakage that made the variability numbers meaningless. `reject_fraction` is
-worth modelling because it is ESA's curation and not recoverable from
-the features.
+Both models train on `quality_train.csv.gz`, a real 5,344-source extract from
+archive file 1, not on synthetic rows. Synthesized training data for
+`reject_fraction` would come from a rule I invented, and the model would then
+learn my rule rather than ESA's curation. The target is worth modelling precisely
+because it is ESA's and is not recoverable from the features.
 
 The last step of pre-training asserts the two heads differ:
 
@@ -409,8 +423,8 @@ iris.sql.exec("SELECT * FROM INFORMATION_SCHEMA.ML_TRAINED_MODELS WHERE ModelNam
 trained = {r[0] for r in iris.sql.exec(
     "SELECT * FROM INFORMATION_SCHEMA.ML_TRAINED_MODELS"
 )}
-if "GaiaVariability" not in trained:
-    iris.sql.exec("TRAIN MODEL GaiaVariability")
+if "GaiaDataQuality" not in trained:
+    iris.sql.exec("TRAIN MODEL GaiaDataQuality")
 ```
 
 **3. `iris.sql.prepare().execute()` takes positional args, not a list.**
@@ -463,11 +477,10 @@ Measured on the 20-file benchmark, 74,998 sources, ARM64 Docker:
 | Decompress + parse 20 files (isal + ProcessPoolExecutor)   | 1.4s       |
 | INSERT 74,998 rows into GaiaFluxStats                      | 2.5s       |
 | INSERT 74,998 rows into GaiaQualityStats                   | 3.8s       |
-| PREDICT(GaiaVariability) + write result.csv                | 5.4s       |
-| NGBoost mean + sigma over 74,998 rows, quality.csv, scored | 11.0s      |
-| **Total (`do ^RunScript`)**                                | **11.4s**  |
+| NGBoost mean + sigma over 74,998 rows, quality.csv, scored | 10.4s      |
+| **Total (`do ^RunScript`)**                                | **10.9s**  |
 
-Training all three models is pre-done at container init and costs nothing at
+Training both models is pre-done at container init and costs nothing at
 runtime. The last stage is the expensive one: two NGBoost `PREDICT()` calls
 across the full table for `quality.csv`, then the same two again as an
 `INSERT...SELECT` to materialize `GaiaQualityScored` for the RLM analyst.
@@ -476,25 +489,20 @@ across the full table for `quality.csv`, then the same two again as an
 
 ## What IntegratedML Adds Beyond the Threshold Filter
 
-The contest formula already identifies variable sources correctly, so
-`GaiaVariability` is a demonstration rather than a load-bearing part of the
-answer. Its label is derived from `pct_change > 100`, which means the best it
-can do is reproduce a rule I already have, and it reproduces it at 57.7% recall
-(32,946 of 57,099). That is why `result.csv` comes from the `WHERE` clause and
-the prediction is reported next to it rather than gating it. A model trained on
-a synthetic distribution and evaluated on the real one is a good illustration of
-why you check.
+The contest formula already identifies variable sources correctly, so a model
+aimed at `pct_change > 100` could at best reproduce a rule SQL computes exactly.
+That is why `result.csv` comes from the `WHERE` clause and the models point
+somewhere else.
 
-The second model is the one that earns its place. `reject_fraction` is the share
-of a source's epochs that ESA's own variability pipeline threw out, and it is
-not derivable from the flux summary columns, so there is something real to
-learn. `GaiaDataQuality` is an NGBoost regressor over `n_bp`, `n_rp`, the BP/RP
-signal-to-noise ratios, the coefficients of variation, the flux extremes and
-`pct_change`. NGBoost predicts a distribution rather than a point, so a second
-model file over the same fit returns the standard deviation, and every row in
-`quality.csv` carries its own error bar.
+`reject_fraction` is the share of a source's epochs that ESA's own variability
+pipeline threw out, and it is not derivable from the flux summary columns, so
+there is something real to learn. `GaiaDataQuality` is an NGBoost regressor over
+`n_bp`, `n_rp`, the BP/RP signal-to-noise ratios, the coefficients of variation
+and the flux extremes. NGBoost predicts a distribution rather than a point, so a
+second model file over the same fit returns the standard deviation, and every row
+in `quality.csv` carries its own error bar.
 
-Over all 74,998 sources its mean absolute error is 0.0432 against 0.0613 for
+Over all 74,998 sources the mean absolute error is 0.0432 against 0.0613 for
 predicting the mean, 30% better, with a mean predicted sigma of 0.0466. Both
 models are custom `IRISModel` files, both are called from SQL, and neither needs
 a serving endpoint.
@@ -706,11 +714,10 @@ graph is now good enough that I stopped grepping.
 | `src/Gaia/Tools/SliceAnalyst.cls` | The `%AI.Agent.SubAgent` the root delegates to       |
 | `src/UnitTest/Gaia/RLM2.cls`      | 25 LLM-free tests: grammar, plan, budget, tools      |
 | `run_embedded_iml.py`             | irispython pipeline: scan → ingest → PREDICT() → CSV |
-| `gaia_variability_iris_model.py`  | Custom IRISModel (GradientBoostingClassifier)        |
 | `gaia_quality_estimator.py`       | NGBoost estimator shared by both quality heads       |
 | `gaia_quality_mean_model.py`      | IRISModel for `GaiaDataQuality` (predictive mean)    |
 | `gaia_quality_sigma_model.py`     | IRISModel for `GaiaQualityUncertainty` (sigma)       |
-| `pretrain_gaia_model.py`          | Trains all three models at `docker build` time       |
+| `pretrain_gaia_model.py`          | Trains both models at `docker build` time            |
 | `quality_train.csv.gz`            | 5,344-source real extract, quality models            |
 | `iris.script`                     | Compiles the routines and agent classes              |
 | `Dockerfile`                      | AI Hub image + iris-automl + ngboost + isal          |
