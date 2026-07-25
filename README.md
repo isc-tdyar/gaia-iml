@@ -52,11 +52,16 @@ Registered via `CREATE MODEL ... USING {"iscmodelsdisabled":1,
 models use `pathtoregressors` instead: classification and regression candidates
 come from separate pools, and a numeric target never looks in the classifier pool.
 
-The NGBoost pair predicts `reject_fraction`, the share of a source's epochs that
-ESA's own variability pipeline rejected. Unlike `is_variable` that target is not
-derivable from the features, so there is something real to learn. MAE 0.0432
-against 0.0613 for predicting the mean, 30% better, with a per-row error bar from
-the sigma head.
+`GaiaVariability` is here to demonstrate the custom-classifier path. Its target
+`is_variable` is the `pct_change > 100` rule itself, and it trains on rows
+synthesized from that rule, so the best it can do is approximate something SQL
+already computes exactly.
+
+The NGBoost pair is the model with a real job. It predicts `reject_fraction`, the
+share of a source's epochs that ESA's own variability pipeline rejected. That
+target is not derivable from the features, so there is something to learn: MAE
+0.0432 against 0.0613 for predicting the mean, 30% better, with a per-row error
+bar from the sigma head.
 
 ## Pre-Training Strategy
 
