@@ -4,3 +4,4 @@ data/out/*.md
 __pycache__/
 *.pyc
 iris-main.log
+.DS_Store
