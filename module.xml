@@ -3,7 +3,7 @@
   <Document name="gaia-iml.ZPM">
     <Module>
       <Name>gaia-iml</Name>
-      <Description>Gaia DR3 variable star detection using IntegratedML Custom Models + AI Hub. Scans 20 gzipped epoch photometry files, ingests flux and per-epoch quality stats into IRIS, then scores every source with SQL PREDICT() against two custom NGBoost IRISModel regressors that predict ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. InterSystems Employee Programming Challenge #1.</Description>
+      <Description>Gaia DR3 variable star detection using IntegratedML Custom Models + AI Hub. Scans 20 gzipped epoch photometry files, ingests flux and per-epoch quality stats into IRIS, then scores every source with SQL PREDICT() against two custom NGBoost IRISModel regressors that predict ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. InterSystems Employee Programming Challenge #1. The optional recursive-language-model reports (^RLMAudit, ^RLMTriage, ^RLM2Audit) run on rlm-core: Gaia.Source declares the survey as an RLM.Source -- six dimensions, 22 slices, sixteen aggregates -- and the library supplies the recursion, the budget, the slice resolver and the report.</Description>
       <Version>1.0.0</Version>
       <Author>
         <Person>Thomas Dyar</Person>

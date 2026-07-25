@@ -88,23 +88,45 @@ not ours to control:
 `Gaia.RLM` is a recursive language model over `GaiaQualityScored`. The data is
 never placed in a prompt: each call receives only aggregate statistics for its
 own slice, so context size is independent of table size. The model picks a
-decomposition key from a fixed whitelist and the class owns the SQL predicates,
+decomposition key from a fixed whitelist and the store owns the SQL predicates,
 so there is no injection surface. Bounded at depth 3 and 18 LLM calls.
 
+The recursion itself is not in this repository. `Gaia.RLM` is three
+constructions of `RLM.Engine` from
+[rlm-core](https://github.com/isc-tdyar/rlm-iris); what stays here is the domain
+knowledge, and it is all in two classes:
+
+- `Gaia.Source` extends `RLM.Source.Table`: six dimensions expanding to 22 slices,
+  sixteen aggregates per peek, eleven lines of prose describing a slice, and a
+  `>= 400`-row floor below which it declines to split.
+- `Gaia.LLM.AIHub` implements `RLM.LLM`, and is the only class here that names
+  `%AI.*`.
+- `Gaia.RLM` holds the two questions, the two scopes, and where the reports go.
+
+The recursion, the frontier, the call budget, the slice resolver, the trace and
+the report assembly are all `rlm-core`'s.
+
+Porting onto it removed 510 lines: `Gaia.RLM` went from 513 to 129, and
+`Gaia.Slice` — a second copy of the slice grammar — was deleted outright.
+
 `Gaia.RLM2` answers the same audit question with the decomposition on the other
-side. `Gaia.RLM` only ever asks the model which key to split by and decides the
-rest in ObjectScript; `Gaia.RLM2` shows it the slice menu and lets it name the
+side. `Gaia.RLM` only ever asks the model which key to split by and the engine
+decides the rest; `Gaia.RLM2` shows it the slice menu and lets it name the
 slices, then hands each one to a `%AI.Agent.SubAgent` that peeks, sub-slices if
 the spread warrants it, and returns a paragraph. `Gaia.RLM`'s cost is knowable
 before the first call and every run has the same shape; `Gaia.RLM2`'s plan differs
-run to run and is only bounded, at 6 delegations. 36s for the full audit.
+run to run and is only bounded, at 6 delegations. 36s for the full audit. It
+keeps its own budget and trace deliberately: the model owns the recursion there,
+so the library's engine has nothing to lend it, and it exists to be compared
+against the engine.
 
 Both keep the data out of the prompt, and in both the SQL predicates belong to
-ObjectScript: `Gaia.Slice` resolves a name like
-`reject_level:severe/epoch_count:few` against the same whitelist, so a model can
-name a slice but cannot express a predicate. The plan is filtered against that
-whitelist and truncated to the budget before the first spawn, not refused after
-the last one, which is what `UnitTest.Gaia.RLM2` tests without needing a provider.
+ObjectScript: `RLM.Slice` resolves a name like `reject_level:b3/epoch_count:b1`
+against the dimensions `Gaia.Source` declares, so a model can name a slice but
+cannot express a predicate. One resolver, one whitelist, one place a name can be
+refused. The plan is filtered against that whitelist and truncated to the budget
+before the first spawn, not refused after the last one, which is what
+`UnitTest.Gaia.RLM2` tests without needing a provider.
 
 The subagent is called from ObjectScript, once per planned slice, rather than
 exposed to the root as a tool for its model to invoke. That path did not return

@@ -1,19 +1,26 @@
-/// Delegating RLM: the same recursive-language-model idea as Gaia.RLM, built on
-/// %AI.Agent.SubAgent instead of an ObjectScript recursion.
+/// Delegating RLM: the same recursive-language-model idea as Gaia.RLM, with the
+/// recursion driven by the model through %AI.Agent.SubAgent.
 ///
 /// Both implementations exist because they answer the same question differently,
-/// and the difference is the interesting part.
+/// and the difference is the interesting part. It is no longer a difference between
+/// two hand-written recursions -- Gaia.RLM's went to the library -- but between a
+/// library engine and a model that plans for itself.
 ///
-///     Gaia.RLM    ObjectScript owns the recursion. The model picks a dimension
-///                 key; Recurse() decides whether to subdivide by comparing the
-///                 slice's STDDEV to the survey baseline, and calls itself.
-///                 Cost is knowable before the first call. Every run has the
-///                 same shape.
+///     Gaia.RLM    RLM.Engine owns the recursion. The model is asked only which
+///                 dimension to split by; the engine expands that into one child
+///                 per slice, decides whether to go deeper from the store's own
+///                 split metric, and spends a declared budget. Cost is knowable
+///                 before the first call and every run has the same shape.
 ///
-///     Gaia.RLM2   The model owns the recursion. It is given a slice grammar and
-///                 a Delegate tool, and it decides what to explore and how deep.
-///                 The shape differs between runs. Cost is bounded but not
-///                 predictable.
+///     Gaia.RLM2   The model owns the recursion. It is shown the slice grammar and
+///                 names the slices itself, and each one is handed to a subagent
+///                 that may sub-peek. The shape differs between runs. Cost is
+///                 bounded but not predictable.
+///
+/// So the budget, trace and reduce step below are not a duplicate of the library's:
+/// RLM.Engine has nothing to lend a caller that is not walking a frontier. What the
+/// library does supply here is everything the two paths must agree on -- the store,
+/// its dimensions, and the resolver that turns a slice name into a predicate.
 ///
 /// What carries over is the property that matters: the data is never in a prompt.
 /// The toolset is aggregate-only (Gaia.Tools.Survey), so context is independent of
