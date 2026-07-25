@@ -95,46 +95,46 @@ ClassMethod Dimensions() As %DynamicObject
         "reject_level": {
             "describe": "how heavily ESA's pipeline rejected the source's epochs (the target being modelled)",
             "children": [
-                {"label":"clean (ESA rejected under 5% of epochs)","where":"reject_fraction < 0.05"},
-                {"label":"moderate (5-20% rejected)","where":"reject_fraction >= 0.05 AND reject_fraction < 0.20"},
-                {"label":"heavy (20-50% rejected)","where":"reject_fraction >= 0.20 AND reject_fraction < 0.50"},
-                {"label":"severe (over half of all epochs rejected)","where":"reject_fraction >= 0.50"}
+                {"token":"clean","label":"clean (ESA rejected under 5% of epochs)","where":"reject_fraction < 0.05"},
+                {"token":"moderate","label":"moderate (5-20% rejected)","where":"reject_fraction >= 0.05 AND reject_fraction < 0.20"},
+                {"token":"heavy","label":"heavy (20-50% rejected)","where":"reject_fraction >= 0.20 AND reject_fraction < 0.50"},
+                {"token":"severe","label":"severe (over half of all epochs rejected)","where":"reject_fraction >= 0.50"}
             ]
         },
         "epoch_count": {
             "describe": "how many usable epochs the source has, i.e. how much evidence each measurement rests on",
             "children": [
-                {"label":"very few epochs (under 5 in BP)","where":"n_bp < 5"},
-                {"label":"few epochs (5-19 in BP)","where":"n_bp >= 5 AND n_bp < 20"},
-                {"label":"well sampled (20-59 in BP)","where":"n_bp >= 20 AND n_bp < 60"},
-                {"label":"densely sampled (60+ in BP)","where":"n_bp >= 60"}
+                {"token":"veryfew","label":"very few epochs (under 5 in BP)","where":"n_bp < 5"},
+                {"token":"few","label":"few epochs (5-19 in BP)","where":"n_bp >= 5 AND n_bp < 20"},
+                {"token":"sampled","label":"well sampled (20-59 in BP)","where":"n_bp >= 20 AND n_bp < 60"},
+                {"token":"dense","label":"densely sampled (60+ in BP)","where":"n_bp >= 60"}
             ]
         },
         "signal_quality": {
             "describe": "photometric signal-to-noise, mean flux divided by mean flux error",
             "children": [
-                {"label":"very low SNR (under 50)","where":"bp_snr < 50"},
-                {"label":"low SNR (50-199)","where":"bp_snr >= 50 AND bp_snr < 200"},
-                {"label":"good SNR (200-999)","where":"bp_snr >= 200 AND bp_snr < 1000"},
-                {"label":"high SNR (1000+)","where":"bp_snr >= 1000"}
+                {"token":"verylow","label":"very low SNR (under 50)","where":"bp_snr < 50"},
+                {"token":"low","label":"low SNR (50-199)","where":"bp_snr >= 50 AND bp_snr < 200"},
+                {"token":"good","label":"good SNR (200-999)","where":"bp_snr >= 200 AND bp_snr < 1000"},
+                {"token":"high","label":"high SNR (1000+)","where":"bp_snr >= 1000"}
             ]
         },
         "model_confidence": {
             "describe": "how confident the NGBoost model is in its own reject-fraction prediction (its predicted sigma)",
             "children": [
-                {"label":"model confident (sigma under 0.04)","where":"pred_sigma < 0.04"},
-                {"label":"model moderately confident (sigma 0.04-0.08)","where":"pred_sigma >= 0.04 AND pred_sigma < 0.08"},
-                {"label":"model unsure (sigma 0.08-0.15)","where":"pred_sigma >= 0.08 AND pred_sigma < 0.15"},
-                {"label":"model very unsure (sigma 0.15+)","where":"pred_sigma >= 0.15"}
+                {"token":"confident","label":"model confident (sigma under 0.04)","where":"pred_sigma < 0.04"},
+                {"token":"moderate","label":"model moderately confident (sigma 0.04-0.08)","where":"pred_sigma >= 0.04 AND pred_sigma < 0.08"},
+                {"token":"unsure","label":"model unsure (sigma 0.08-0.15)","where":"pred_sigma >= 0.08 AND pred_sigma < 0.15"},
+                {"token":"veryunsure","label":"model very unsure (sigma 0.15+)","where":"pred_sigma >= 0.15"}
             ]
         },
         "variability": {
             "describe": "the relative flux swing that the challenge itself asks about - above 100% is a variable-star detection",
             "children": [
-                {"label":"not variable (swing under 100%)","where":"pct_change <= 100"},
-                {"label":"variable, modest swing (100-1000%)","where":"pct_change > 100 AND pct_change <= 1000"},
-                {"label":"variable, large swing (1000-100000%)","where":"pct_change > 1000 AND pct_change <= 100000"},
-                {"label":"extreme swing (over 100000%, almost certainly instrumental)","where":"pct_change > 100000"}
+                {"token":"stable","label":"not variable (swing under 100%)","where":"pct_change <= 100"},
+                {"token":"modest","label":"variable, modest swing (100-1000%)","where":"pct_change > 100 AND pct_change <= 1000"},
+                {"token":"large","label":"variable, large swing (1000-100000%)","where":"pct_change > 1000 AND pct_change <= 100000"},
+                {"token":"extreme","label":"extreme swing (over 100000%, almost certainly instrumental)","where":"pct_change > 100000"}
             ]
         }
     }
@@ -482,12 +482,9 @@ ClassMethod Report(outPath As %String = "", question As %String = "", rootWhere 
         Set report = "## "_title_$Char(10,10)_"RLM analyst unavailable: "_ex.DisplayString()
             _$Char(10,10)_"The IntegratedML pipeline and `result.csv` are unaffected."_$Char(10)
     }
-    If outPath '= "" {
-        Set file = ##class(%Stream.FileCharacter).%New()
-        Do file.LinkToFile(outPath)
-        Do file.Write(report)
-        Do file.%Save()
-    }
+    // UTF-8 explicitly: the default 8-bit table turns the model's em dashes and
+    // Greek letters into "?" in the finished file.
+    If outPath '= "" { Do ##class(Gaia.RLM2).WriteReport(outPath, report) }
     Quit report
 }
 

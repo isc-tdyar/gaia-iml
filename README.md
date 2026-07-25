@@ -68,7 +68,7 @@ skips training.
 
 ## AI Hub Agents
 
-Three optional entry points, all kept out of `^RunScript` because LLM latency is
+Four optional entry points, all kept out of `^RunScript` because LLM latency is
 not ours to control:
 
 | Command         | Output                   | What it does                    |
@@ -76,6 +76,7 @@ not ours to control:
 | `do ^Analyze`   | `data/out/analysis.md`   | Fixed aggregates, one LLM call  |
 | `do ^RLMAudit`  | `data/out/rlm_audit.md`  | RLM: where photometry is bad    |
 | `do ^RLMTriage` | `data/out/rlm_triage.md` | Same engine, variable detection |
+| `do ^RLM2Audit` | `data/out/rlm2_audit.md` | Same audit, model-driven RLM    |
 
 `Gaia.Analyst` runs a fixed set of aggregate queries, several of which call
 `PREDICT(GaiaVariability)` inline, then asks the agent once to interpret them.
@@ -85,6 +86,27 @@ never placed in a prompt: each call receives only aggregate statistics for its
 own slice, so context size is independent of table size. The model picks a
 decomposition key from a fixed whitelist and the class owns the SQL predicates,
 so there is no injection surface. Bounded at depth 3 and 18 LLM calls.
+
+`Gaia.RLM2` answers the same audit question with the decomposition on the other
+side. `Gaia.RLM` only ever asks the model which key to split by and decides the
+rest in ObjectScript; `Gaia.RLM2` shows it the slice menu and lets it name the
+slices, then hands each one to a `%AI.Agent.SubAgent` that peeks, sub-slices if
+the spread warrants it, and returns a paragraph. `Gaia.RLM`'s cost is knowable
+before the first call and every run has the same shape; `Gaia.RLM2`'s plan differs
+run to run and is only bounded, at 6 delegations. 36s for the full audit.
+
+Both keep the data out of the prompt, and in both the SQL predicates belong to
+ObjectScript: `Gaia.Slice` resolves a name like
+`reject_level:severe/epoch_count:few` against the same whitelist, so a model can
+name a slice but cannot express a predicate. The plan is filtered against that
+whitelist and truncated to the budget before the first spawn, not refused after
+the last one, which is what `UnitTest.Gaia.RLM2` tests without needing a provider.
+
+The spawn is performed by ObjectScript rather than exposed to the root as a tool.
+A `%AI.Tool` that makes its own LLM call returns empty when the agent loop
+dispatches it, because tool execution goes through `%AI.ToolMgr.ExecuteTool` into
+`$ZF(-6)` and the nested provider call does not return. The same subagent works
+when called directly. Verified in `2026.3.0AI.126.0`.
 
 Requires `OPENAI_API_KEY` in the environment. Without it these print the reason
 and exit, leaving `result.csv` untouched.

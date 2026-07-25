@@ -1,0 +1,24 @@
+ROUTINE RLM2Audit
+ ; Optional AI Hub deliverable: the same data-quality audit as ^RLMAudit, run by
+ ; the delegating RLM (Gaia.RLM2) instead of the ObjectScript-driven one. Written
+ ; to data/out/rlm2_audit.md so the two reports can be compared side by side.
+ ;
+ ; The difference is who owns the recursion. ^RLMAudit walks the slice tree in
+ ; ObjectScript and asks the model only which dimension to split by; this one
+ ; hands the model a slice grammar and a %AI.Agent.SubAgent it can delegate to,
+ ; and lets it decide what to explore.
+ ;
+ ; Kept out of ^RunScript for the same reason as ^Analyze and ^RLMAudit: it makes
+ ; LLM calls, so its wall-clock is not ours to control. Requires OPENAI_API_KEY;
+ ; without it the report says so and result.csv is untouched.
+ ;
+ ; Run ^RunScript first - this reads GaiaQualityScored and its two materialized
+ ; prediction columns, which that pipeline produces.
+ New outDir,report
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Write "Running Gaia.RLM2 audit (delegating, <=",##class(Gaia.RLM2).#MAXCALLS," delegations)...",!
+ Set report = ##class(Gaia.RLM2).Audit(outDir_"/rlm2_audit.md")
+ Write "Audit: ",outDir,"/rlm2_audit.md (",$Length(report)," chars)",!
+ Write "Delegations used: ",##class(Gaia.RLM2).Spent(),!
+ Quit

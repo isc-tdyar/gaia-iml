@@ -5,6 +5,7 @@
     do $System.OBJ.Load("/home/irisowner/dev/src/Analyze.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLMAudit.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLMTriage.mac","ck")
+    do $System.OBJ.Load("/home/irisowner/dev/src/RLM2Audit.mac","ck")
 
     ;disabling password expire for development purposes
     zn "%SYS"

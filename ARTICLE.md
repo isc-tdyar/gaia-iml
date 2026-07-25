@@ -559,6 +559,63 @@ materialized as stored columns, so it can pass `AVG(pred_sigma)` per slice into
 the prompt. That is what makes the report say where the model is least reliable
 rather than only what the data looks like. Run it with `do ^RLMAudit`.
 
+### The Same Idea With the Decomposition on the Other Side
+
+`Gaia.RLM` owns the recursion in ObjectScript. `Recurse()` decides whether to
+subdivide by comparing a slice's standard deviation to the survey baseline, and
+the model only ever answers "which key should I split by". The AI Hub also ships
+`%AI.Agent.SubAgent`, a `%AI.Tool` that spawns a child agent, which makes it
+possible to hand the decomposition to the model instead. `Gaia.RLM2` answers the
+same audit question that way, so the two reports are directly comparable.
+
+The model sees the survey statistics and the slice menu and names the slices worth
+separate analysis. Each one goes to a `SliceAnalyst` subagent that peeks at its
+slice, sub-slices if the spread warrants it, and returns one paragraph. The root
+then reduces those paragraphs into the report. Its context grows by a paragraph
+per slice, the same bound the explicit recursion gets, reached by a different
+route. A full audit is 36s: 6 delegations across 8 aggregate queries.
+
+The trade is legible. `Gaia.RLM` costs at most 18 calls and every run has the same
+shape. `Gaia.RLM2` is bounded at 6 delegations but its plan differs run to run.
+
+One thing did not work as designed. The intent was to give the root the
+`SliceAnalyst` as a tool and let its model choose when to delegate, putting the
+recursion itself on the model's side. Delegation then hangs. `%AI.Tool`
+execution goes through `%AI.ToolMgr.ExecuteTool`, which dispatches into the Rust
+library via `$ZF(-6)`, and the subagent's own provider call inside that never comes
+back; the tool returns an empty string. Called directly, the same subagent answers
+in about 3 seconds. A one-method probe tool that does nothing but `Run()` a trivial
+prompt reproduces it, so it is not specific to `SliceAnalyst`: in
+`2026.3.0AI.126.0`, a tool that makes an LLM call cannot be driven by an agent
+loop. So the plan is the model's and the spawn is ObjectScript's, which keeps the
+interesting half and is honest about the other.
+
+What does not change is where the safety lives. Handing the decomposition to the
+model does not mean moving the constraints into the prompt. A model that names
+slices needs the name to be a lookup, not a fragment, so `Gaia.Slice.Resolve()`
+matches `reject_level:severe/epoch_count:few` against the same whitelist `Gaia.RLM`
+uses and refuses everything else, including `reject_level:severe' OR 1=1 --`, which
+fails because no such token exists rather than because it was escaped. And the
+plan is filtered and truncated to the 6-delegation budget before the first spawn
+rather than refused after the last one.
+
+Both properties are then testable without an LLM, which is the practical reason
+to put them there. `UnitTest.Gaia.RLM2` is 25 methods, none calling a provider,
+and writing them first found five real bugs. Three were in the grammar and its
+harness: a guard that used `$Length(used, ",")` to count resolved path components
+and so passed on the empty string, because `$Length("", ",")` is 1; child tokens
+derived as "first word, lowercased", which collided into `model` four times, so
+`Resolve()` would have returned a different slice than the one the model asked for;
+and an assumption that `%AI.Tool.%Invoke()` returns a wrapped object, when it
+returns the method's own value. The other two came out of reading the first
+finished report: `%Stream.FileCharacter` defaults to the local 8-bit table, so
+every em dash the model wrote reached the file as `?`, and the analysts' own
+sub-peeks were being recorded in the same trace as the delegations, so a 6-slice
+plan produced 8 trace lines and read as a budget violation. The encoding bug was
+in `Gaia.RLM` too, and had been shipping in `rlm_audit.md` unnoticed.
+
+Run it with `do ^RLM2Audit`.
+
 ---
 
 ## Mapping the Codebase: ObjectScript in codebase-memory-mcp
@@ -637,24 +694,30 @@ graph is now good enough that I stopped grepping.
 
 [isc-tdyar/gaia-iml](https://github.com/isc-tdyar/gaia-iml)
 
-| File                             | Purpose                                              |
-| -------------------------------- | ---------------------------------------------------- |
-| `src/RunScript.mac`              | ObjectScript entry point (`do ^RunScript`)           |
-| `src/Analyze.mac`                | AI Hub agent report (`do ^Analyze`)                  |
-| `src/RLMAudit.mac`               | Recursive data-quality audit (`do ^RLMAudit`)        |
-| `src/RLMTriage.mac`              | Recursive triage pass (`do ^RLMTriage`)              |
-| `src/Gaia/Analyst.cls`           | `%AI.Agent` subclass: evidence + report              |
-| `src/Gaia/RLM.cls`               | Recursive language model over aggregates             |
-| `run_embedded_iml.py`            | irispython pipeline: scan → ingest → PREDICT() → CSV |
-| `gaia_variability_iris_model.py` | Custom IRISModel (GradientBoostingClassifier)        |
-| `gaia_quality_estimator.py`      | NGBoost estimator shared by both quality heads       |
-| `gaia_quality_mean_model.py`     | IRISModel for `GaiaDataQuality` (predictive mean)    |
-| `gaia_quality_sigma_model.py`    | IRISModel for `GaiaQualityUncertainty` (sigma)       |
-| `pretrain_gaia_model.py`         | Trains all three models at `docker build` time       |
-| `quality_train.csv.gz`           | 5,344-source real extract, quality models            |
-| `iris.script`                    | Compiles the routines and agent classes              |
-| `Dockerfile`                     | AI Hub image + iris-automl + ngboost + isal          |
-| `docker-compose.yml`             | Volume mounts for data in/out                        |
+| File                              | Purpose                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `src/RunScript.mac`               | ObjectScript entry point (`do ^RunScript`)           |
+| `src/Analyze.mac`                 | AI Hub agent report (`do ^Analyze`)                  |
+| `src/RLMAudit.mac`                | Recursive data-quality audit (`do ^RLMAudit`)        |
+| `src/RLMTriage.mac`               | Recursive triage pass (`do ^RLMTriage`)              |
+| `src/RLM2Audit.mac`               | Delegated audit (`do ^RLM2Audit`)                    |
+| `src/Gaia/Analyst.cls`            | `%AI.Agent` subclass: evidence + report              |
+| `src/Gaia/RLM.cls`                | Recursive language model over aggregates             |
+| `src/Gaia/RLM2.cls`               | Same idea via `%AI.Agent.SubAgent` delegation        |
+| `src/Gaia/Slice.cls`              | Slice-name whitelist shared by both RLMs             |
+| `src/Gaia/Tools/Survey.cls`       | Aggregate-only toolset given to every agent          |
+| `src/Gaia/Tools/SliceAnalyst.cls` | The `%AI.Agent.SubAgent` the root delegates to       |
+| `src/UnitTest/Gaia/RLM2.cls`      | 25 LLM-free tests: grammar, plan, budget, tools      |
+| `run_embedded_iml.py`             | irispython pipeline: scan → ingest → PREDICT() → CSV |
+| `gaia_variability_iris_model.py`  | Custom IRISModel (GradientBoostingClassifier)        |
+| `gaia_quality_estimator.py`       | NGBoost estimator shared by both quality heads       |
+| `gaia_quality_mean_model.py`      | IRISModel for `GaiaDataQuality` (predictive mean)    |
+| `gaia_quality_sigma_model.py`     | IRISModel for `GaiaQualityUncertainty` (sigma)       |
+| `pretrain_gaia_model.py`          | Trains all three models at `docker build` time       |
+| `quality_train.csv.gz`            | 5,344-source real extract, quality models            |
+| `iris.script`                     | Compiles the routines and agent classes              |
+| `Dockerfile`                      | AI Hub image + iris-automl + ngboost + isal          |
+| `docker-compose.yml`              | Volume mounts for data in/out                        |
 
 Other entries:
 
