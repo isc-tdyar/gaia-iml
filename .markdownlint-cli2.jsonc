@@ -1,0 +1,11 @@
+{
+  // Tables and fenced code cannot always be wrapped at 80 without becoming
+  // unreadable; prose still is.
+  "config": {
+    "MD013": {
+      "line_length": 80,
+      "tables": false,
+      "code_blocks": false
+    }
+  }
+}

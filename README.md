@@ -182,5 +182,5 @@ RLM agent, and codebase graph tooling.
 
 - [gaia-fast](https://github.com/isc-tdyar/gaia-fast): isal +
   ProcessPoolExecutor, ~1s, no IntegratedML
-- [gaia-golf](https://github.com/isc-tdyar/gaia-golf): 580-char
-  `$SYSTEM.Python.Run()` one-liner, ~17s
+- [gaia-terse](https://github.com/isc-tdyar/gaia-terse): 580-char
+  `$SYSTEM.Python.Run()` one-liner, ~16s

@@ -1,6 +1,6 @@
 # Detecting Variable Stars with Gaia DR3 and IntegratedML Custom Models
 
-_An entry for the InterSystems Employee Programming Challenge #1_
+An entry for the InterSystems Employee Programming Challenge #1.
 
 ---
 
@@ -20,7 +20,7 @@ Three contest entries, each a standalone Docker image:
 | Repo                                                  | Approach                        | Bonuses                  | Runtime  |
 | ----------------------------------------------------- | ------------------------------- | ------------------------ | -------- |
 | [gaia-fast](https://github.com/isc-tdyar/gaia-fast)   | isal + ProcessPoolExecutor      | none                     | ~1s      |
-| [gaia-golf](https://github.com/isc-tdyar/gaia-golf)   | 580-char `$SYSTEM.Python.Run()` | Python +3                | ~17s     |
+| [gaia-terse](https://github.com/isc-tdyar/gaia-terse) | 580-char `$SYSTEM.Python.Run()` | Python +3                | ~16s     |
 | **[gaia-iml](https://github.com/isc-tdyar/gaia-iml)** | **IntegratedML PREDICT()**      | **Python +3, AI Hub +3** | **~11s** |
 
 This article covers the kitchen-sink entry: `gaia-iml`.
@@ -727,5 +727,5 @@ Other entries:
 
 - [isc-tdyar/gaia-fast](https://github.com/isc-tdyar/gaia-fast): isal +
   ProcessPoolExecutor, ~1s, no IntegratedML
-- [isc-tdyar/gaia-golf](https://github.com/isc-tdyar/gaia-golf): 580-char
-  `$SYSTEM.Python.Run()` one-liner, ~17s
+- [isc-tdyar/gaia-terse](https://github.com/isc-tdyar/gaia-terse): 580-char
+  `$SYSTEM.Python.Run()` one-liner, ~16s
