@@ -19,7 +19,7 @@ Three contest entries, each a standalone Docker image:
 
 | Repo                                                  | Approach                        | Bonuses                  | Runtime  |
 | ----------------------------------------------------- | ------------------------------- | ------------------------ | -------- |
-| [gaia-fast](https://github.com/isc-tdyar/gaia-fast)   | isal + ProcessPoolExecutor      | —                        | ~1s      |
+| [gaia-fast](https://github.com/isc-tdyar/gaia-fast)   | isal + ProcessPoolExecutor      | none                     | ~1s      |
 | [gaia-golf](https://github.com/isc-tdyar/gaia-golf)   | 580-char `$SYSTEM.Python.Run()` | Python +3                | ~17s     |
 | **[gaia-iml](https://github.com/isc-tdyar/gaia-iml)** | **IntegratedML PREDICT()**      | **Python +3, AI Hub +3** | **~11s** |
 
@@ -38,8 +38,8 @@ and your model runs in the same address space as the SQL engine.
 
 One Python file. One class named `IRISModel`. Two required attributes:
 
-- `self.name` — a unique string identifier
-- `self.model` — any scikit-learn-compatible estimator
+- `self.name`: a unique string identifier
+- `self.model`: any scikit-learn-compatible estimator
 
 IntegratedML handles feature scaling, encoding and correlation reduction, then
 calls `self.model.fit(X, y)` and `self.model.predict(X)` in-process.
@@ -109,9 +109,9 @@ These live in 840 bulk ECSV files published on the Gaia CDN.
 
 Each file contains one row per source with:
 
-- `source_id` — Gaia unique identifier (64-bit integer)
-- `bp_flux` — Blue Photometer flux array, one value per transit: `[1234.5,NaN,6789.0,…]`
-- `rp_flux` — Red Photometer flux array
+- `source_id`: Gaia unique identifier (64-bit integer)
+- `bp_flux`: Blue Photometer flux array, one value per transit: `[1234.5,NaN,6789.0,…]`
+- `rp_flux`: Red Photometer flux array
 
 A **variable star** is one whose flux changes significantly between transits:
 
@@ -228,7 +228,7 @@ On first run, `TRAIN MODEL` loads `gaia_variability_iris_model.py`, instantiates
 `IRISModel`, applies IntegratedML's own preprocessing (scaling, correlation
 reduction), then calls `self.model.fit(X, y)`, all inside the IRIS process.
 
-The check against `ML_TRAINED_MODELS` is deliberate. `RunScript` is called every
+The check against `ML_TRAINED_MODELS` matters. `RunScript` is called every
 time the judge evaluates the container, and the model is pre-trained at
 container init time (see below), so this branch is taken zero times during
 judging.
@@ -274,10 +274,10 @@ RUN --mount=type=bind,src=.,dst=. \
 `GaiaVariability` trains on 2,500 synthetic rows (2,000 stable, 500 variable)
 covering the feature range, then the synthetic table is dropped. The two NGBoost
 quality models train on `quality_train.csv.gz`, a real 5,344-source extract from
-archive file 1. That difference is deliberate: synthetic rows for
+archive file 1. The split is on purpose: synthetic rows for
 `reject_fraction` would be generated from a rule I invented, which is the same
 leakage that made the variability numbers meaningless. `reject_fraction` is
-worth modelling precisely because it is ESA's curation and not recoverable from
+worth modelling because it is ESA's curation and not recoverable from
 the features.
 
 The last step of pre-training asserts the two heads differ:
@@ -302,7 +302,7 @@ run is 11s instead of ~45s.
 
 ## RunScript.mac
 
-The ObjectScript entry point is deliberately minimal:
+The ObjectScript entry point is minimal:
 
 ```objectscript
 ROUTINE RunScript
@@ -320,7 +320,7 @@ ROUTINE RunScript
  Quit
 ```
 
-The AI Hub agent is deliberately not in this path. It makes LLM calls whose
+The AI Hub agent is not in this path. It makes LLM calls whose
 latency is not mine to control, and this routine is the benchmarked one. It runs
 separately as `do ^Analyze`.
 
@@ -390,7 +390,7 @@ both head files can import it.
 **1. Packages must install to `mgr/python`, not system Python.**
 
 ```bash
-# Correct — targets IRIS's embedded Python package directory:
+# Correct: targets IRIS's embedded Python package directory:
 irispython -m pip install \
     --index-url https://registry.intersystems.com/pypi/simple \
     --target /usr/irissys/mgr/python \
@@ -402,10 +402,10 @@ If you install to the system Python, `irispython` won't find the packages.
 **2. `ML_TRAINED_MODELS` doesn't support `WHERE` clauses.**
 
 ```python
-# Wrong — IRIS raises "Field 'MODELNAME' not found":
+# Wrong: IRIS raises "Field 'MODELNAME' not found":
 iris.sql.exec("SELECT * FROM INFORMATION_SCHEMA.ML_TRAINED_MODELS WHERE ModelName='X'")
 
-# Correct — fetch all, filter in Python:
+# Correct: fetch all, filter in Python:
 trained = {r[0] for r in iris.sql.exec(
     "SELECT * FROM INFORMATION_SCHEMA.ML_TRAINED_MODELS"
 )}
@@ -418,7 +418,7 @@ if "GaiaVariability" not in trained:
 ```python
 stmt = iris.sql.prepare("INSERT INTO T VALUES (?,?,?)")
 
-# Wrong — raises "Invalid Dynamic Statement Parameter":
+# Wrong: raises "Invalid Dynamic Statement Parameter":
 stmt.execute([1, 2, 3])
 
 # Correct:
@@ -551,8 +551,8 @@ of the 18 allowed:
   - extreme swing (over 100000%)           (n=67,    sd=0.1137) -> summarized
 ```
 
-Only `severe` needed subdividing, and it is the smallest slice — which is the
-point, since the badly-behaved tails are small by construction.
+Only `severe` needed subdividing, and it is the smallest slice, which is the
+point: the badly-behaved tails are small by construction.
 
 The agent reads `GaiaQualityScored`, the table with the NGBoost predictions
 materialized as stored columns, so it can pass `AVG(pred_sigma)` per slice into
@@ -574,7 +574,7 @@ which is why the numbers below are measured rather than asserted.
 
 One caveat on versions. The tagged release
 [v0.9.0](https://github.com/DeusData/codebase-memory-mcp/releases/tag/v0.9.0)
-vendors the ObjectScript grammars but does not wire them into the extractor —
+vendors the ObjectScript grammars but does not wire them into the extractor.
 `lang_specs.c` on that tag contains no ObjectScript entries at all, so `.cls`
 files come through as files and little else. The extraction wiring merged
 afterwards ([PR #467](https://github.com/DeusData/codebase-memory-mcp/pull/467)
@@ -606,7 +606,7 @@ MATCH (a:Method)-[r:CALLS]->(b:Method) WHERE a.file_path ENDS WITH '.cls'
   ...
 ```
 
-That makes `trace_path` work on the recursion I actually cared about. Asking for
+That makes `trace_path` work on the recursion I cared about. Asking for
 `Recurse` returns 9 callees and 3 callers, which is the whole control flow of
 the RLM pass without opening the file:
 
@@ -624,7 +624,7 @@ labelled as "inside `Report`, which has 8 outgoing calls" rather than as a line
 number.
 
 Two limitations worth naming. `Recurse` calls itself at line 363 and that edge
-is missing — self-calls through `..Method()` are the one relative-dot case not
+is missing. Self-calls through `..Method()` are the one relative-dot case not
 yet resolved, so the graph shows everything about the recursion except that it
 recurses. And nothing links the two languages, which no extractor could:
 `^RunScript` shelling out to `irispython`, and `iris.sql.exec()` calling back
@@ -651,12 +651,14 @@ graph is now good enough that I stopped grepping.
 | `gaia_quality_mean_model.py`     | IRISModel for `GaiaDataQuality` (predictive mean)    |
 | `gaia_quality_sigma_model.py`    | IRISModel for `GaiaQualityUncertainty` (sigma)       |
 | `pretrain_gaia_model.py`         | Trains all three models at `docker build` time       |
-| `quality_train.csv.gz`           | 5,344-source real extract for the quality models     |
+| `quality_train.csv.gz`           | 5,344-source real extract, quality models            |
 | `iris.script`                    | Compiles the routines and agent classes              |
-| `Dockerfile`                     | AI Hub base image + iris-automl + ngboost + isal     |
+| `Dockerfile`                     | AI Hub image + iris-automl + ngboost + isal          |
 | `docker-compose.yml`             | Volume mounts for data in/out                        |
 
 Other entries:
 
-- [isc-tdyar/gaia-fast](https://github.com/isc-tdyar/gaia-fast) — isal + ProcessPoolExecutor, ~1s, no IntegratedML
-- [isc-tdyar/gaia-golf](https://github.com/isc-tdyar/gaia-golf) — 580-char `$SYSTEM.Python.Run()` one-liner, ~17s
+- [isc-tdyar/gaia-fast](https://github.com/isc-tdyar/gaia-fast): isal +
+  ProcessPoolExecutor, ~1s, no IntegratedML
+- [isc-tdyar/gaia-golf](https://github.com/isc-tdyar/gaia-golf): 580-char
+  `$SYSTEM.Python.Run()` one-liner, ~17s

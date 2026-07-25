@@ -12,14 +12,14 @@ arithmetic rule, so a model that predicts it is strictly worse than the
 comparison and any accuracy it shows is leakage. `reject_fraction` is different
 in kind: it is a label ESA curated from per-epoch quality assessments that are
 *not* recoverable from the summary statistics we feed the model. There is real
-information to learn, and being wrong is genuinely wrong.
+information to learn, and being wrong means being wrong.
 
 Why NGBoost rather than a plain regressor: NGBoost fits a full conditional
 *distribution* per source, so every prediction carries its own error bar. For a
 data-quality score that is the interesting part. "40% of this source's epochs
 are probably bad" means something quite different at sigma 0.02 than at 0.12.
-It is also the kind of model AutoML cannot produce, which is the point of the
-custom-models feature.
+It is also the kind of model AutoML cannot produce, which is why the
+custom-models feature exists.
 
 Measured on real archive data: files 1-2 as training (n=10,137), file 3 fully
 held out as test (n=4,094). No fold leakage: different sources entirely.
@@ -32,8 +32,8 @@ held out as test (n=4,094). No fold leakage: different sources entirely.
     TabPFN (foundation model)    0.0405   +0.55   16s predict
 
 NGBoost matches the point accuracy of plain gradient boosting (0.0389 vs 0.0382
-MAE, well inside noise) and adds uncertainty that is genuinely calibrated rather
-than decorative:
+MAE, well inside noise) and adds uncertainty that is calibrated rather than
+decorative:
 
     nominal interval    empirical coverage
     50%                 50.8%

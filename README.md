@@ -1,4 +1,4 @@
-# Gaia DR3 Variable Star Detection — IntegratedML + AI Hub Entry
+# Gaia DR3 Variable Star Detection: IntegratedML + AI Hub Entry
 
 InterSystems Employee Programming Challenge #1
 
@@ -27,9 +27,9 @@ access.
 6. `PREDICT(GaiaDataQuality)` and `PREDICT(GaiaQualityUncertainty)` write
    `quality.csv` and materialize `GaiaQualityScored`
 
-`result.csv` comes from the deterministic rule, not from `PREDICT()`. The
-variability model reproduces that rule at 57.7% recall, so filtering on it would
-emit a wrong answer; the prediction is reported next to the rule instead.
+`result.csv` comes from the deterministic rule. The variability model reproduces
+that rule at 57.7% recall, so filtering on it would emit a wrong answer. The
+prediction is reported next to the rule instead.
 
 ## The Custom IRISModels
 
@@ -154,7 +154,7 @@ RLM agent, and codebase graph tooling.
 
 ## Related Entries
 
-- [gaia-fast](https://github.com/isc-tdyar/gaia-fast) — isal +
+- [gaia-fast](https://github.com/isc-tdyar/gaia-fast): isal +
   ProcessPoolExecutor, ~1s, no IntegratedML
-- [gaia-golf](https://github.com/isc-tdyar/gaia-golf) — 580-char
+- [gaia-golf](https://github.com/isc-tdyar/gaia-golf): 580-char
   `$SYSTEM.Python.Run()` one-liner, ~17s

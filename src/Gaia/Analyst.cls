@@ -72,8 +72,8 @@ to cite is not among them, say so rather than estimating.
 }
 
 /// Aggregate queries whose results become the agent's evidence. Each is small by
-/// construction, and several call PREDICT() inline, which is the point of the
-/// entry: the model is invoked as an ordinary SQL function.
+/// construction, and several call PREDICT() inline, so the model is invoked as an
+/// ordinary SQL function.
 ClassMethod Queries() As %DynamicArray
 {
     Quit [

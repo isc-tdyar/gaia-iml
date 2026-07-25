@@ -474,7 +474,7 @@ ClassMethod Report(outPath As %String = "", question As %String = "", rootWhere 
             _"was still at least "_..#SPLITRATIO_"x the survey-wide spread of "
             _$FNumber(..BaselineSpread(),,4)_" - i.e. when slicing had not made the "
             _"population any more homogeneous - to a maximum depth of "_..#MAXDEPTH_"."
-            _$Char(10,10)_"Recursion actually taken ("_..CallCount()
+            _$Char(10,10)_"Recursion taken ("_..CallCount()
             _" LLM calls, ceiling "_..#MAXCALLS_"):"_$Char(10,10)
             _"```"_$Char(10)_trace_"```"_$Char(10)
     }
