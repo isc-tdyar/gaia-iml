@@ -31,6 +31,8 @@ class IRISModel:
         self.model = NGBoostQualityEstimator(
             n_estimators=int(kwargs.get("n_estimators", 300)),
             learning_rate=float(kwargs.get("learning_rate", 0.01)),
-            random_state=kwargs.get("random_state", 42),
+            # `or 42`: AutoML always passes random_state=None explicitly, so
+            # .get()'s default never fires. See gaia_quality_mean_model.py.
+            random_state=kwargs.get("random_state") or 42,
             predict_output="sigma",
         )

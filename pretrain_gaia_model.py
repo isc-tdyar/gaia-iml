@@ -87,7 +87,14 @@ for name, subdir, filename, head in QUALITY_MODELS:
         iris.sql.exec(f"DROP MODEL IF EXISTS {name}")
     except Exception:
         pass
-    qusing = ('{"iscmodelsdisabled":1,"pathtoregressors":"' + regressors_path + '"}')
+    # random_state is set here as well as defaulted in the model files, because it
+    # seeds two independent things. AutoML shuffles the training frame with it
+    # (automl_train.py:47, df.sample(frac=1, random_state=...)) before the estimator
+    # is ever constructed, so a seed supplied only inside IRISModel leaves the row
+    # order random. Both must be pinned or a rebuilt image trains a different model
+    # and every assertion about a measured population becomes flaky.
+    qusing = ('{"iscmodelsdisabled":1,"random_state":42,"pathtoregressors":"'
+              + regressors_path + '"}')
     iris.sql.exec(
         f"CREATE MODEL {name} PREDICTING (reject_fraction) "
         f"WITH ({withcols}) FROM GaiaQualityStats USING {qusing}"
