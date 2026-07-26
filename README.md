@@ -1,19 +1,25 @@
-# Gaia DR3 Variable Star Detection: IntegratedML + AI Hub Entry
+# Gaia DR3 Variable Star Detection: IntegratedML Entry
 
 InterSystems Employee Programming Challenge #1
 
 Detects variable stars in Gaia DR3 epoch photometry using **IntegratedML Custom
-Models** running inside IRIS via AI Hub. Scans 20 gzipped epoch photometry files,
+Models** running inside IRIS. Scans 20 gzipped epoch photometry files,
 ingests flux and quality statistics into SQL tables, then scores every source with
 `PREDICT()` calls backed by two custom `IRISModel` files: NGBoost heads
 predicting data quality and its uncertainty.
 
-**~11 seconds** end-to-end. Targets Python (+3) and AI Hub (+3) contest bonuses.
+**~11 seconds** end-to-end. Targets the Python (+3) contest bonus.
 
-**Note:** This entry uses an ISC-internal Docker image (`docker.iscinternal.com`).
-It is intended for ISC employees participating in the Employee Programming
-Challenge. External contestants cannot pull the image without ISC network/VPN
-access.
+Everything above builds and runs on the **public** community image,
+`containers.intersystems.com/intersystems/iris-community:2026.1` — no
+InterSystems login, no VPN, no license key. That image is the default in the
+`Dockerfile`, and the Quick Start below is the whole path.
+
+The four optional AI Hub agent reports (`^Analyze`, `^RLMAudit`, `^RLMTriage`,
+`^RLM2Audit`) are the one part that needs more: `%AI.Agent` ships only in the
+2026.3 AI preview image. They sit outside `^RunScript`, and the pipeline,
+`result.csv` and `quality.csv` are all unaffected by their absence. See
+[Optional: the AI Hub analysis layer](#optional-the-ai-hub-analysis-layer).
 
 ## How It Works
 
@@ -70,120 +76,83 @@ Training both models takes ~33s, paid once at `docker build` time by
 extract. At runtime the models are already trained, so `run_embedded_iml.py` goes
 straight to `PREDICT()`.
 
-## AI Hub Agents
-
-Four optional entry points, all kept out of `^RunScript` because LLM latency is
-not ours to control:
-
-| Command         | Output                   | What it does                    |
-| --------------- | ------------------------ | ------------------------------- |
-| `do ^Analyze`   | `data/out/analysis.md`   | Fixed aggregates, one LLM call  |
-| `do ^RLMAudit`  | `data/out/rlm_audit.md`  | RLM: where photometry is bad    |
-| `do ^RLMTriage` | `data/out/rlm_triage.md` | Same engine, variable detection |
-| `do ^RLM2Audit` | `data/out/rlm2_audit.md` | Same audit, model-driven RLM    |
-
-`Gaia.Analyst` runs a fixed set of aggregate queries, several of which call
-`PREDICT(GaiaDataQuality)` inline, then asks the agent once to interpret them.
-
-`Gaia.RLM` is a recursive language model over `GaiaQualityScored`. The data is
-never placed in a prompt: each call receives only aggregate statistics for its
-own slice, so context size is independent of table size. The model picks a
-decomposition key from a fixed whitelist and the store owns the SQL predicates,
-so there is no injection surface. Bounded at depth 3 and 18 LLM calls.
-
-The recursion itself is not in this repository. `Gaia.RLM` is three
-constructions of `RLM.Engine` from
-[rlm-core](https://github.com/isc-tdyar/rlm-iris); what stays here is the domain
-knowledge, and it is all in two classes:
-
-- `Gaia.Source` extends `RLM.Source.Table`: six dimensions expanding to 22 slices,
-  sixteen aggregates per peek, eleven lines of prose describing a slice, and a
-  `>= 400`-row floor below which it declines to split.
-- `Gaia.LLM.AIHub` implements `RLM.LLM`, and is the only class here that names
-  `%AI.*`.
-- `Gaia.RLM` holds the two questions, the two scopes, and where the reports go.
-
-The recursion, the frontier, the call budget, the slice resolver, the trace and
-the report assembly are all `rlm-core`'s.
-
-Porting onto it removed 510 lines: `Gaia.RLM` went from 513 to 129, and
-`Gaia.Slice` — a second copy of the slice grammar — was deleted outright.
-
-`Gaia.RLM2` answers the same audit question with the decomposition on the other
-side. `Gaia.RLM` only ever asks the model which key to split by and the engine
-decides the rest; `Gaia.RLM2` shows it the slice menu and lets it name the
-slices, then hands each one to a `%AI.Agent.SubAgent` that peeks, sub-slices if
-the spread warrants it, and returns a paragraph. `Gaia.RLM`'s cost is knowable
-before the first call and every run has the same shape; `Gaia.RLM2`'s plan differs
-run to run and is only bounded, at 6 delegations. 36s for the full audit. It
-keeps its own budget and trace deliberately: the model owns the recursion there,
-so the library's engine has nothing to lend it, and it exists to be compared
-against the engine.
-
-Both keep the data out of the prompt, and in both the SQL predicates belong to
-ObjectScript: `RLM.Slice` resolves a name like `reject_level:b3/epoch_count:b1`
-against the dimensions `Gaia.Source` declares, so a model can name a slice but
-cannot express a predicate. One resolver, one whitelist, one place a name can be
-refused. The plan is filtered against that whitelist and truncated to the budget
-before the first spawn, not refused after the last one, which is what
-`UnitTest.Gaia.RLM2` tests without needing a provider.
-
-The subagent is called from ObjectScript, once per planned slice, rather than
-exposed to the root as a tool for its model to invoke. That path did not return
-on the preview build used here once the child had tools of its own
-([ai-hub-eap#26](https://github.com/intersystems-community/ai-hub-eap/issues/26)),
-so the model chooses the decomposition and the spawn is explicit.
-
-Requires `OPENAI_API_KEY` in the environment. Without it these print the reason
-and exit, leaving `result.csv` untouched.
-
 ## Prerequisites
 
-- ISC network or VPN access (required to pull the AI Hub image)
-- Docker + Docker Compose installed
+- Docker + Docker Compose installed. No InterSystems login, no VPN and no
+  license key: the default base image is the public community edition.
 - 16 GB RAM recommended (8 GB minimum)
 - ~10 GB free disk space (image + data)
 - Internet access for data download (~360 MB)
 
-## Get the Data
-
-Download Gaia DR3 EpochPhotometry bulk files from the ESA archive. The benchmark
-is the first 20 archive files, `EpochPhotometry_000000-003111` through
-`EpochPhotometry_020985-021233`:
-
-```bash
-mkdir -p data/in && cd data/in
-curl -s https://cdn.gea.esac.esa.int/Gaia/gdr3/Photometry/epoch_photometry/ \
-  | grep -oE 'EpochPhotometry_[0-9]+-[0-9]+\.csv\.gz' | sort -u | head -20 \
-  | xargs -P4 -I{} curl -sO \
-      "https://cdn.gea.esac.esa.int/Gaia/gdr3/Photometry/epoch_photometry/{}"
-cd ../..
-```
-
-Expected: 20 files, ~360 MB total, 74,998 sources.
-
 ## Quick Start
 
-The RLM analysis classes extend [rlm-core](https://github.com/isc-tdyar/rlm-iris),
-which arrives as a submodule at `lib/rlm-core`. Clone with it or nothing compiles:
+Four commands, from nothing to `result.csv`.
 
 ```bash
 git clone --recursive https://github.com/isc-tdyar/gaia-iml.git
-# already cloned without it:
-git submodule update --init
+cd gaia-iml
 ```
+
+`--recursive` matters: the optional RLM analysis classes extend
+[rlm-core](https://github.com/isc-tdyar/rlm-iris), which arrives as a submodule
+at `lib/rlm-core`. If you already cloned without it, run
+`git submodule update --init`.
+
+**1. Get the data.** The benchmark is the first 20 EpochPhotometry files from
+the Gaia DR3 archive, `EpochPhotometry_000000-003111` through
+`EpochPhotometry_020985-021233`. The archive's object store answers a bucket
+listing at the `?prefix=...&delimiter=/` query form and returns S3
+`ListBucketResult` XML, so the file names come out of `<Key>` elements:
 
 ```bash
-# Place Gaia EpochPhotometry .gz files in data/in/
-docker compose up --build -d
-docker exec gaia-iml-iris bash -c \
-  'printf "do ^RunScript\nhalt\n" | iris session IRIS'
-head -5 data/out/result.csv
+mkdir -p data/in && cd data/in
+BASE=https://gaia.eu-1.cdn77-storage.com
+PREFIX=Gaia/gdr3/Photometry/epoch_photometry/
+curl -s "$BASE/?prefix=$PREFIX&delimiter=/" \
+  | grep -oE '<Key>[^<]*EpochPhotometry_[0-9]+-[0-9]+\.csv\.gz</Key>' \
+  | sed -E 's:</?Key>::g' | sort | head -20 \
+  | xargs -P 8 -I{} curl -sO "$BASE/{}"
+cd ../..
+ls data/in/*.csv.gz | wc -l   # expect 20
 ```
 
-Override the base image with
-`docker compose build --build-arg IMAGE=<your local tag>` if you pulled the AI
-preview tarball from evaluation.intersystems.com instead.
+Expected: 20 files, ~360 MB total, 74,998 sources. Allow several minutes.
+
+Do not fetch the bare directory URL
+(`https://cdn.gea.esac.esa.int/Gaia/gdr3/Photometry/epoch_photometry/`) — it is
+an object store, not a web server, and answers `301` with an empty body, so a
+`grep` for file names over it silently yields zero files and the download step
+appears to succeed while downloading nothing.
+
+**2. Build and start IRIS.** `--wait` is not optional: IRIS takes several
+seconds to come up after the container does, and without it the `docker exec` on
+the next line runs against an instance that is not accepting connections yet.
+The `healthcheck:` in `docker-compose.yml` is what `--wait` waits on.
+
+```bash
+docker compose up --build -d --wait
+```
+
+**3. Run the pipeline.**
+
+```bash
+docker exec gaia-iml-iris bash -c \
+  'printf "do ^RunScript\nhalt\n" | iris session IRIS'
+```
+
+**4. Look at the answer.**
+
+```bash
+head -5 data/out/result.csv
+head -5 data/out/quality.csv
+```
+
+The base image is
+`containers.intersystems.com/intersystems/iris-community:2026.1`, which needs no
+credentials. Override it with
+`docker compose build --build-arg IMAGE=<your tag>` to build on another image —
+see [Optional: the AI Hub analysis layer](#optional-the-ai-hub-analysis-layer)
+for the one case that needs to.
 
 ### Installing with IPM
 
@@ -257,18 +226,114 @@ partially-scored table would leave the agents unable to run and nothing else
 would notice.
 
 The four analysis entry points are not in `e2e.sh` — they make LLM calls, which
-is why they sit outside `^RunScript`. Their logic is covered by the `%UnitTest`
-suite (85 tests) against a null provider:
+is why they sit outside `^RunScript`. Their logic is covered by a `%UnitTest`
+suite against a null provider:
 
 ```bash
-docker exec gaia-iml-iris iris session IRIS -U USER \
-  '##class(%UnitTest.Manager).RunTest("Gaia",,"ck")'
+docker exec -i gaia-iml-iris iris session IRIS -U USER <<'EOF'
+do ##class(%UnitTest.Manager).RunTest("Gaia",,"ck")
+halt
+EOF
 ```
 
-`Gaia`, not `UnitTest.Gaia`: `^UnitTestRoot` already points at `src/UnitTest`,
-so the argument is a path below it and the fuller name resolves to
-`src/UnitTest/UnitTest/Gaia`, which does not exist. The `"ck"` qualifier is
-required — without it the classes are found but never compiled.
+`Gaia`, not `UnitTest.Gaia`: `iris.script` sets `^UnitTestRoot` to
+`/home/irisowner/dev/src/UnitTest`, so the argument is a path below it and the
+fuller name resolves to `src/UnitTest/UnitTest/Gaia`, which does not exist. The
+`"ck"` qualifier is required — without it the classes are found but never
+compiled.
+
+**This suite needs the AI preview image.** Three of its six classes
+(`UnitTest.Gaia.Source`, `UnitTest.Gaia.RLM2`, `UnitTest.Gaia.SourceCounts`)
+test the analysis layer, so on the default public image they fail to compile on
+`Gaia.Source`/`Gaia.RLM2` not existing and `RunTest` reports the suite as
+failed. That is expected there, and says nothing about the contest pipeline —
+`tests/e2e.sh` is the suite that covers `^RunScript` and both IntegratedML
+models, and it passes on the public image.
+
+## Optional: the AI Hub analysis layer
+
+Everything above runs on the public community image. This section does not: the
+four report entry points below build on `%AI.Agent`, which ships only in the
+InterSystems 2026.3 AI preview image. On the public image `Gaia.Install` skips
+these classes and says so, and `^RunScript`, `result.csv` and `quality.csv` are
+unaffected.
+
+To run them you need that preview image plus `OPENAI_API_KEY` in the
+environment, then build against it:
+
+```bash
+docker compose build --build-arg IMAGE=<the AI preview tag>
+```
+
+ISC employees can pull the preview tag from the internal registry
+(`docker.iscinternal.com`); everyone else downloads the tarball from
+<https://evaluation.intersystems.com> and loads it with `docker load`. Neither is
+needed for the contest pipeline.
+
+Four optional entry points, all kept out of `^RunScript` because LLM latency is
+not ours to control:
+
+| Command         | Output                   | What it does                    |
+| --------------- | ------------------------ | ------------------------------- |
+| `do ^Analyze`   | `data/out/analysis.md`   | Fixed aggregates, one LLM call  |
+| `do ^RLMAudit`  | `data/out/rlm_audit.md`  | RLM: where photometry is bad    |
+| `do ^RLMTriage` | `data/out/rlm_triage.md` | Same engine, variable detection |
+| `do ^RLM2Audit` | `data/out/rlm2_audit.md` | Same audit, model-driven RLM    |
+
+`Gaia.Analyst` runs a fixed set of aggregate queries, several of which call
+`PREDICT(GaiaDataQuality)` inline, then asks the agent once to interpret them.
+
+`Gaia.RLM` is a recursive language model over `GaiaQualityScored`. The data is
+never placed in a prompt: each call receives only aggregate statistics for its
+own slice, so context size is independent of table size. The model picks a
+decomposition key from a fixed whitelist and the store owns the SQL predicates,
+so there is no injection surface. Bounded at depth 3 and 18 LLM calls.
+
+The recursion itself is not in this repository. `Gaia.RLM` is three
+constructions of `RLM.Engine` from
+[rlm-core](https://github.com/isc-tdyar/rlm-iris); what stays here is the domain
+knowledge, and it is all in two classes:
+
+- `Gaia.Source` extends `RLM.Source.Table`: six dimensions expanding to 22 slices,
+  sixteen aggregates per peek, eleven lines of prose describing a slice, and a
+  `>= 400`-row floor below which it declines to split.
+- `Gaia.LLM.AIHub` implements `RLM.LLM`, and is the only class here that names
+  `%AI.*`.
+- `Gaia.RLM` holds the two questions, the two scopes, and where the reports go.
+
+The recursion, the frontier, the call budget, the slice resolver, the trace and
+the report assembly are all `rlm-core`'s.
+
+Porting onto it removed 510 lines: `Gaia.RLM` went from 513 to 129, and
+`Gaia.Slice` — a second copy of the slice grammar — was deleted outright.
+
+`Gaia.RLM2` answers the same audit question with the decomposition on the other
+side. `Gaia.RLM` only ever asks the model which key to split by and the engine
+decides the rest; `Gaia.RLM2` shows it the slice menu and lets it name the
+slices, then hands each one to a `%AI.Agent.SubAgent` that peeks, sub-slices if
+the spread warrants it, and returns a paragraph. `Gaia.RLM`'s cost is knowable
+before the first call and every run has the same shape; `Gaia.RLM2`'s plan differs
+run to run and is only bounded, at 6 delegations. 36s for the full audit. It
+keeps its own budget and trace deliberately: the model owns the recursion there,
+so the library's engine has nothing to lend it, and it exists to be compared
+against the engine.
+
+Both keep the data out of the prompt, and in both the SQL predicates belong to
+ObjectScript: `RLM.Slice` resolves a name like `reject_level:b3/epoch_count:b1`
+against the dimensions `Gaia.Source` declares, so a model can name a slice but
+cannot express a predicate. One resolver, one whitelist, one place a name can be
+refused. The plan is filtered against that whitelist and truncated to the budget
+before the first spawn, not refused after the last one, which is what
+`UnitTest.Gaia.RLM2` tests without needing a provider.
+
+The subagent is called from ObjectScript, once per planned slice, rather than
+exposed to the root as a tool for its model to invoke. That path did not return
+on the preview build used here once the child had tools of its own
+([ai-hub-eap#26](https://github.com/intersystems-community/ai-hub-eap/issues/26)),
+so the model chooses the decomposition and the spawn is explicit.
+
+Requires `OPENAI_API_KEY` in the environment. Without it these print the reason
+and exit, leaving `result.csv` untouched.
 
 ## Article
 

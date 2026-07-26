@@ -1,16 +1,42 @@
     ; rlm-core first: the Gaia classes extend RLM.Source.Table and RLM.LLM, so
     ; load order is not cosmetic -- src/ will not compile without the library
     ; already present. Submodule; a plain clone leaves lib/rlm-core empty.
-    do $System.OBJ.LoadDir("/home/irisowner/dev/lib/rlm-core/src","ck",,1)
+    ; One statement per line, and every conditional written as a postconditional.
+    ; `iris session < file` feeds the terminal one line at a time, so a multi-line
+    ; `if { ... }` block does not hold: the braces are read as separate commands and
+    ; the body runs unconditionally. That is a silent wrong answer, not a syntax
+    ; error, so it has to be written this way rather than merely tested.
+    set haveRLM = ##class(%File).DirectoryExists("/home/irisowner/dev/lib/rlm-core/src")
+    do:haveRLM $System.OBJ.LoadDir("/home/irisowner/dev/lib/rlm-core/src","ck",,1)
+    write:'haveRLM "[gaia-iml] lib/rlm-core is empty (clone was not --recursive): the RLM reports are skipped. ^RunScript is unaffected.",!
 
-    ; compile RunScript.mac plus the Gaia.Analyst / Gaia.RLM AI Hub agent classes
-    ; (LoadDir skips .mac routines, so load each entry point explicitly)
-    do $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
+    ; The optional analysis layer (Gaia.Analyst, Gaia.RLM, Gaia.RLM2, the tool
+    ; classes and their unit tests) extends %AI.Agent / %AI.Tool, which ship only
+    ; in the 2026.3 AI preview image. On the public community image -- the default
+    ; base image -- loading src/ unconditionally prints six ERROR #5373 lines in
+    ; the middle of a build that otherwise succeeds, which reads as a broken
+    ; repository. Gate it on the superclass actually existing, and on rlm-core
+    ; being there, then say which way it went. Gaia.Install.cls has no superclass,
+    ; so it loads either way.
+    set haveAI = ##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") && haveRLM
+    do:haveAI $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
+    write:haveAI "[gaia-iml] AI Hub present: analysis layer compiled.",!
+    do:'haveAI $System.OBJ.Load("/home/irisowner/dev/src/Gaia/Install.cls","ck")
+    write:'haveAI "[gaia-iml] %AI.Agent absent: analysis layer skipped. ^RunScript and both IntegratedML models are unaffected.",!
+
+    ; The contest entry points. LoadDir skips .mac routines, so load each one
+    ; explicitly -- and unconditionally, because none of them needs AI Hub.
     do $System.OBJ.Load("/home/irisowner/dev/src/RunScript.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/Analyze.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLMAudit.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLMTriage.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLM2Audit.mac","ck")
+
+    ; %UnitTest.Manager resolves its test spec relative to ^UnitTestRoot, so
+    ; without this the documented RunTest("Gaia",,"ck") finds nothing. Point it at
+    ; src/UnitTest so the spec is the package below it -- "Gaia", not
+    ; "UnitTest.Gaia".
+    set ^UnitTestRoot = "/home/irisowner/dev/src/UnitTest"
 
     ;disabling password expire for development purposes
     zn "%SYS"

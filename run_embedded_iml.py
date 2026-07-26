@@ -112,7 +112,8 @@ rs=iris.sql.exec("SELECT source_id,bp_min,bp_max,rp_min,rp_max,pct_change FROM G
 out=list(rs)
 hdr="source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change\n"
 buf=hdr+"".join(f"{r[0]},{float(r[1]):.6f},{float(r[2]):.6f},{float(r[3]):.6f},{float(r[4]):.6f},{float(r[5]):.4f}\n"for r in out)
-os.makedirs(O,exist_ok=True);open(os.path.join(O,"result.csv"),"w").write(buf)
+os.makedirs(O,exist_ok=True)
+with open(os.path.join(O,"result.csv"),"w")as fh:fh.write(buf)
 print(f"{len(out)} variable sources -> {O}/result.csv")
 
 # Second output: the IntegratedML deliverable proper. Both PREDICT() calls are
@@ -130,7 +131,10 @@ try:
  # returned them and the file reshuffles between runs for no real reason.
  qr=sorted(iris.sql.exec("SELECT source_id,reject_fraction,PREDICT(GaiaDataQuality) AS pred,PREDICT(GaiaQualityUncertainty) AS sigma,n_bp,n_rp,pct_change FROM GaiaQualityStats"),key=lambda r:(-float(r[2]),int(r[0])))
  qb="source_id,esa_reject_fraction,predicted_reject_fraction,prediction_sigma,n_bp,n_rp,percentage_change\n"+"".join(f"{r[0]},{float(r[1]):.4f},{float(r[2]):.4f},{float(r[3]):.4f},{r[4]},{r[5]},{float(r[6]):.4f}\n"for r in qr)
- open(os.path.join(O,"quality.csv"),"w").write(qb)
+ # Context manager, not a bare open(...).write(...): the implicit close there is
+ # left to the garbage collector, so a full or read-only volume surfaces as a
+ # truncated CSV with no error rather than an exception at the write.
+ with open(os.path.join(O,"quality.csv"),"w")as fh:fh.write(qb)
  # Materialize the two predictions into stored columns, as GaiaQualityScored. The
  # RLM analyst slices this table with aggregates, and PREDICT() inside an
  # aggregate or ORDER BY is re-evaluated per row-comparison and effectively never

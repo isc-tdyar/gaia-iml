@@ -17,16 +17,20 @@ submitting: OEX reads the manifest and README from the public default branch.
 - **Tags:** IntegratedML, custom-models, AI-Hub, gaia, variable-stars,
   astronomy, embedded-python, PREDICT, NGBoost, machine-learning
 - **Short description:** Gaia DR3 variable star detection using IntegratedML
-  Custom Models and AI Hub. Scans 20 gzipped epoch photometry files, ingests
+  Custom Models. Scans 20 gzipped epoch photometry files, ingests
   flux and per-epoch quality statistics into IRIS, then scores every source with
   SQL `PREDICT()` against two custom NGBoost `IRISModel` regressors predicting
-  ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end.
-- **Caveat to state on the listing:** the full entry requires the ISC-internal AI
-  Hub image (`docker.iscinternal.com`), so external users cannot build it without
-  ISC network access. Worth saying plainly in the listing body rather than letting
-  people discover it at `docker compose up`. An IPM install on a stock community
-  image gets `^RunScript` and the IntegratedML models and prints which classes it
-  skipped; the AI Hub and RLM reports need the preview image.
+  ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. Builds
+  and runs on the public `iris-community:2026.1` image — no login required.
+- **What to state on the listing:** the pipeline — `^RunScript`, both
+  IntegratedML models, `result.csv` and `quality.csv` — builds and runs on the
+  public image `containers.intersystems.com/intersystems/iris-community:2026.1`,
+  which is the `Dockerfile` default. No InterSystems login, no VPN, no license
+  key. Only the four optional AI Hub report entry points (`^Analyze`,
+  `^RLMAudit`, `^RLMTriage`, `^RLM2Audit`) need more, because `%AI.Agent` ships
+  only in the 2026.3 AI preview image; they are outside `^RunScript` and
+  `Gaia.Install` skips them with a printed reason where they cannot compile.
+  Worth one line so nobody reads the optional layer as a hard requirement.
 
 ## gaia-fast
 
@@ -97,7 +101,12 @@ Done for all three:
   long-lived container. gaia-fast 12 checks in 0.84s, gaia-terse 13 in 16.6s,
   gaia-iml 23 in 11.0s. All three assert the same literal checksum of the
   `source_id` set, so the cross-entry agreement is a test rather than a claim.
-  gaia-iml also runs 85 `%UnitTest` methods and the IPM gate.
+  gaia-iml's 23 checks were re-run from a fresh `git clone --recursive` on the
+  public `iris-community:2026.1` image: all 23 pass, 57,099 detections, 74,998
+  scored, MAE 0.0432, 10.6s. gaia-iml also has the `%UnitTest` suite and the IPM
+  gate, but the `%UnitTest` suite covers the optional analysis layer and needs
+  the AI preview image — three of its six classes do not compile on the public
+  one.
 
   Writing these found a real defect. Both NGBoost models were training
   unseeded: AutoML passes `random_state=None` explicitly, so

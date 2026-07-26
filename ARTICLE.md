@@ -346,11 +346,14 @@ overhead.
 
 ## Dockerfile
 
-The entry requires the AI Hub image because IntegratedML's AutoML provider
-(`intersystems-iris-automl`) is only available on AI builds:
+The pipeline builds on the public community image. `%ML.AutoML.Provider` is
+present there, and `intersystems-iris-automl` — the wheel that supplies the
+`IRISModel` custom-model contract — installs from the public
+`registry.intersystems.com` index. Only the optional AI Hub reports need the
+2026.3 AI preview image, and they are outside `^RunScript`:
 
 ```dockerfile
-ARG IMAGE=docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.126.0
+ARG IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
 FROM $IMAGE
 
 WORKDIR /home/irisowner/dev
@@ -699,29 +702,29 @@ graph is now good enough that I stopped grepping.
 
 [isc-tdyar/gaia-iml](https://github.com/isc-tdyar/gaia-iml)
 
-| File                              | Purpose                                              |
-| --------------------------------- | ---------------------------------------------------- |
-| `src/RunScript.mac`               | ObjectScript entry point (`do ^RunScript`)           |
-| `src/Analyze.mac`                 | AI Hub agent report (`do ^Analyze`)                  |
-| `src/RLMAudit.mac`                | Recursive data-quality audit (`do ^RLMAudit`)        |
-| `src/RLMTriage.mac`               | Recursive triage pass (`do ^RLMTriage`)              |
-| `src/RLM2Audit.mac`               | Delegated audit (`do ^RLM2Audit`)                    |
-| `src/Gaia/Analyst.cls`            | `%AI.Agent` subclass: evidence + report              |
-| `src/Gaia/RLM.cls`                | Recursive language model over aggregates             |
-| `src/Gaia/RLM2.cls`               | Same idea via `%AI.Agent.SubAgent` delegation        |
-| `src/Gaia/Slice.cls`              | Slice-name whitelist shared by both RLMs             |
-| `src/Gaia/Tools/Survey.cls`       | Aggregate-only toolset given to every agent          |
-| `src/Gaia/Tools/SliceAnalyst.cls` | The `%AI.Agent.SubAgent` the root delegates to       |
-| `src/UnitTest/Gaia/RLM2.cls`      | 25 LLM-free tests: grammar, plan, budget, tools      |
-| `run_embedded_iml.py`             | irispython pipeline: scan → ingest → PREDICT() → CSV |
-| `gaia_quality_estimator.py`       | NGBoost estimator shared by both quality heads       |
-| `gaia_quality_mean_model.py`      | IRISModel for `GaiaDataQuality` (predictive mean)    |
-| `gaia_quality_sigma_model.py`     | IRISModel for `GaiaQualityUncertainty` (sigma)       |
-| `pretrain_gaia_model.py`          | Trains both models at `docker build` time            |
-| `quality_train.csv.gz`            | 5,344-source real extract, quality models            |
-| `iris.script`                     | Compiles the routines and agent classes              |
-| `Dockerfile`                      | AI Hub image + iris-automl + ngboost + isal          |
-| `docker-compose.yml`              | Volume mounts for data in/out                        |
+| File                              | Purpose                                               |
+| --------------------------------- | ----------------------------------------------------- |
+| `src/RunScript.mac`               | ObjectScript entry point (`do ^RunScript`)            |
+| `src/Analyze.mac`                 | AI Hub agent report (`do ^Analyze`)                   |
+| `src/RLMAudit.mac`                | Recursive data-quality audit (`do ^RLMAudit`)         |
+| `src/RLMTriage.mac`               | Recursive triage pass (`do ^RLMTriage`)               |
+| `src/RLM2Audit.mac`               | Delegated audit (`do ^RLM2Audit`)                     |
+| `src/Gaia/Analyst.cls`            | `%AI.Agent` subclass: evidence + report               |
+| `src/Gaia/RLM.cls`                | Recursive language model over aggregates              |
+| `src/Gaia/RLM2.cls`               | Same idea via `%AI.Agent.SubAgent` delegation         |
+| `src/Gaia/Slice.cls`              | Slice-name whitelist shared by both RLMs              |
+| `src/Gaia/Tools/Survey.cls`       | Aggregate-only toolset given to every agent           |
+| `src/Gaia/Tools/SliceAnalyst.cls` | The `%AI.Agent.SubAgent` the root delegates to        |
+| `src/UnitTest/Gaia/RLM2.cls`      | 25 LLM-free tests: grammar, plan, budget, tools       |
+| `run_embedded_iml.py`             | irispython pipeline: scan → ingest → PREDICT() → CSV  |
+| `gaia_quality_estimator.py`       | NGBoost estimator shared by both quality heads        |
+| `gaia_quality_mean_model.py`      | IRISModel for `GaiaDataQuality` (predictive mean)     |
+| `gaia_quality_sigma_model.py`     | IRISModel for `GaiaQualityUncertainty` (sigma)        |
+| `pretrain_gaia_model.py`          | Trains both models at `docker build` time             |
+| `quality_train.csv.gz`            | 5,344-source real extract, quality models             |
+| `iris.script`                     | Compiles the routines and agent classes               |
+| `Dockerfile`                      | public community image + iris-automl + ngboost + isal |
+| `docker-compose.yml`              | Volume mounts for data in/out                         |
 
 Other entries:
 

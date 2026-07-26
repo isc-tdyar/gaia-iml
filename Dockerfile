@@ -1,9 +1,15 @@
-# AI Hub (%AI.Agent + %AI.Tools.SQL) only ships in the 2026.3 AI preview images,
-# which are not on Docker Hub. This tag is the community edition, so no license
-# key is needed; ISC employees can pull it directly. Anyone else: see the README
-# for the evaluation.intersystems.com tar download, then override with
-#   docker compose build --build-arg IMAGE=<your local tag>
-ARG IMAGE=docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.126.0
+# The public community image. No InterSystems login, no VPN, no license key, and
+# it carries everything the contest pipeline needs: embedded Python, IntegratedML
+# and the %ML.AutoML.Provider that the custom IRISModel regressors plug into.
+#
+# The only thing it does not carry is AI Hub (%AI.Agent, %AI.Tool), which ships
+# only in the 2026.3 AI preview images. Those drive the four optional analysis
+# reports; ^RunScript and both IntegratedML models do not touch them. To build
+# with AI Hub, override the tag:
+#   docker compose build --build-arg IMAGE=<the AI preview tag>
+# ISC employees pull that from docker.iscinternal.com; everyone else downloads
+# the tarball from evaluation.intersystems.com. See the README's optional section.
+ARG IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
 FROM $IMAGE
 
 WORKDIR /home/irisowner/dev

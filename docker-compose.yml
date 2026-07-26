@@ -16,3 +16,17 @@ services:
       - 53773
     volumes:
       - ./:/home/irisowner/dev
+    # IRIS takes several seconds to come up after the container itself starts.
+    # Without this, `docker compose up -d` returns while IRIS is still starting
+    # and the very next `docker exec ... iris session` fails with a connect
+    # error -- which reads as a broken repository rather than a race. The probe
+    # is a real no-op session, not just the superserver port: the port answers
+    # before the namespace will accept a login. With the healthcheck in place,
+    # `docker compose up -d --wait` blocks until IRIS actually answers, so the
+    # documented command sequence works on the first try with no manual sleep.
+    healthcheck:
+      test: ["CMD-SHELL", "iris session IRIS -U USER </dev/null >/dev/null 2>&1"]
+      interval: 3s
+      timeout: 10s
+      start_period: 10s
+      retries: 40
