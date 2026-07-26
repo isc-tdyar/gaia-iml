@@ -20,17 +20,27 @@ submitting: OEX reads the manifest and README from the public default branch.
   Custom Models. Scans 20 gzipped epoch photometry files, ingests
   flux and per-epoch quality statistics into IRIS, then scores every source with
   SQL `PREDICT()` against two custom NGBoost `IRISModel` regressors predicting
-  ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. Builds
-  and runs on the public `iris-community:2026.1` image — no login required.
-- **What to state on the listing:** the pipeline — `^RunScript`, both
-  IntegratedML models, `result.csv` and `quality.csv` — builds and runs on the
-  public image `containers.intersystems.com/intersystems/iris-community:2026.1`,
-  which is the `Dockerfile` default. No InterSystems login, no VPN, no license
-  key. Only the four optional AI Hub report entry points (`^Analyze`,
-  `^RLMAudit`, `^RLMTriage`, `^RLM2Audit`) need more, because `%AI.Agent` ships
-  only in the 2026.3 AI preview image; they are outside `^RunScript` and
-  `Gaia.Install` skips them with a printed reason where they cannot compile.
-  Worth one line so nobody reads the optional layer as a hard requirement.
+  ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. Four AI
+  Hub reports then read the scored table back, including recursive language
+  models that never put a row in a prompt.
+- **What to state on the listing:** two layers, both first-class. The pipeline is
+  `^RunScript`, the two IntegratedML models, `result.csv` and `quality.csv`. On
+  top of it sit four AI Hub entry points (`^Analyze`, `^RLMAudit`, `^RLMTriage`,
+  `^RLM2Audit`); `^RLMAudit` and `^RLMTriage` run `rlm-core`'s recursive engine
+  over 74,998 scored sources on aggregate statistics alone, and `^RLM2Audit`
+  answers the same question with the model owning the recursion instead, so the
+  two are comparable.
+
+  The `Dockerfile` default is the 2026.3 AI preview community image, so both
+  layers work with no flags for anyone who has it — ISC employees from
+  `docker.iscinternal.com`, everyone else from the evaluation tarball. Also state
+  the fallback: one `--build-arg IMAGE=…iris-community:2026.1` runs the whole
+  contest pipeline on the public image with no login, no VPN and no license key,
+  where `Gaia.Install` skips the analysis classes and prints which ones. Both
+  paths pass `tests/e2e.sh` 23/23 — 10.7s and 11.3s — and `result.csv` is
+  byte-identical. `quality.csv` is not, because NGBoost's build-time fit is not
+  bit-reproducible across builds on either image; MAE holds at 0.0432. Do not
+  promise a prediction checksum on the listing.
 
 ## gaia-fast
 

@@ -346,14 +346,12 @@ overhead.
 
 ## Dockerfile
 
-The pipeline builds on the public community image. `%ML.AutoML.Provider` is
-present there, and `intersystems-iris-automl` — the wheel that supplies the
-`IRISModel` custom-model contract — installs from the public
-`registry.intersystems.com` index. Only the optional AI Hub reports need the
-2026.3 AI preview image, and they are outside `^RunScript`:
+The default is the 2026.3 AI preview community image, because it carries both
+halves of the entry — IntegratedML with `%ML.AutoML.Provider`, and AI Hub for the
+four reports — so every documented command works with no flags:
 
 ```dockerfile
-ARG IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
+ARG IMAGE=docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.126.0
 FROM $IMAGE
 
 WORKDIR /home/irisowner/dev
@@ -384,6 +382,28 @@ RUN ADIR=$(/usr/irissys/bin/irispython -c "import os,iris_automl;print(os.path.d
  && cp gaia_quality_estimator.py /usr/irissys/mgr/python/
 USER irisowner
 ```
+
+One `--build-arg` swaps in the public community image instead:
+
+```bash
+docker compose build \
+  --build-arg IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
+```
+
+That build needs no InterSystems login, no VPN and no license key, and runs the
+whole contest pipeline: `%ML.AutoML.Provider` is present on the public image, and
+`intersystems-iris-automl` — the wheel supplying the `IRISModel` contract —
+installs from the public `registry.intersystems.com` index. What is missing is
+`%AI.Agent`, so `Gaia.Install` skips the six analysis classes at activation and
+prints which ones. `tests/e2e.sh` passes 23/23 on both, in 11.3s against 10.7s,
+and `result.csv` is byte-identical — it comes from a `WHERE` clause.
+
+`quality.csv` is not, and the image is not the reason. NGBoost's fit happens at
+`docker build` time and is not bit-reproducible across builds even with
+`random_state=42` pinned in both places it is read; two builds of the same image
+disagree on 1,900 of 74,998 predictions, mean absolute difference 0.00005, worst
+case 0.0157, MAE unchanged at 0.0432. Worth knowing before treating a prediction
+checksum as a regression test — `tests/e2e.sh` asserts the MAE floor instead.
 
 `intersystems-iris-automl` installs `iris_automl`, which provides the AutoML
 provider and the `Classifiers/` and `Regressors/` pools that IntegratedML

@@ -7,8 +7,9 @@ services:
     restart: always
     environment:
       - ISC_CPF_MERGE_FILE=/home/irisowner/dev/merge.cpf
-      # Optional: enables the AI Hub analysis agent. Without it the IntegratedML
-      # pipeline still runs and result.csv is still produced.
+      # The AI Hub analysis reports (^Analyze, ^RLMAudit, ^RLMTriage, ^RLM2Audit)
+      # call out through this key. The IntegratedML pipeline does not: ^RunScript,
+      # result.csv and quality.csv are produced whether or not it is set.
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     ports:
       - 1972

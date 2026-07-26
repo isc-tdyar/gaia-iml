@@ -1,15 +1,18 @@
-# The public community image. No InterSystems login, no VPN, no license key, and
-# it carries everything the contest pipeline needs: embedded Python, IntegratedML
-# and the %ML.AutoML.Provider that the custom IRISModel regressors plug into.
+# The 2026.3 AI preview community image, which carries both halves of this entry:
+# embedded Python, IntegratedML and the %ML.AutoML.Provider the custom IRISModel
+# regressors plug into, plus AI Hub (%AI.Agent, %AI.Tool) for the four analysis
+# reports. Built this way, every documented command works with no flags.
 #
-# The only thing it does not carry is AI Hub (%AI.Agent, %AI.Tool), which ships
-# only in the 2026.3 AI preview images. Those drive the four optional analysis
-# reports; ^RunScript and both IntegratedML models do not touch them. To build
-# with AI Hub, override the tag:
-#   docker compose build --build-arg IMAGE=<the AI preview tag>
-# ISC employees pull that from docker.iscinternal.com; everyone else downloads
-# the tarball from evaluation.intersystems.com. See the README's optional section.
-ARG IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
+# ISC employees pull this tag from docker.iscinternal.com; everyone else
+# downloads the tarball from evaluation.intersystems.com and `docker load`s it.
+#
+# Fallback, verified and fully supported: the public community image needs no
+# login, no VPN and no license key, and runs the whole contest pipeline. It has
+# no AI Hub, so `Gaia.Install` skips the four analysis classes and says which
+# ones -- ^RunScript, result.csv and quality.csv are unaffected.
+#   docker compose build \
+#     --build-arg IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
+ARG IMAGE=docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2026.3.0AI.126.0
 FROM $IMAGE
 
 WORKDIR /home/irisowner/dev

@@ -8,18 +8,24 @@ ingests flux and quality statistics into SQL tables, then scores every source wi
 `PREDICT()` calls backed by two custom `IRISModel` files: NGBoost heads
 predicting data quality and its uncertainty.
 
-**~11 seconds** end-to-end. Targets the Python (+3) contest bonus.
+**~11 seconds** end-to-end. Targets the Python (+3) and AI Hub (+3) contest
+bonuses.
 
-Everything above builds and runs on the **public** community image,
-`containers.intersystems.com/intersystems/iris-community:2026.1` — no
-InterSystems login, no VPN, no license key. That image is the default in the
-`Dockerfile`, and the Quick Start below is the whole path.
+On top of that, four **AI Hub** reports read the scored table back: `^Analyze`
+interprets a fixed aggregate panel, and `^RLMAudit`, `^RLMTriage` and `^RLM2Audit`
+run recursive language models over 74,998 scored sources without ever putting a
+row in a prompt. See [The AI Hub analysis layer](#the-ai-hub-analysis-layer).
 
-The four optional AI Hub agent reports (`^Analyze`, `^RLMAudit`, `^RLMTriage`,
-`^RLM2Audit`) are the one part that needs more: `%AI.Agent` ships only in the
-2026.3 AI preview image. They sit outside `^RunScript`, and the pipeline,
-`result.csv` and `quality.csv` are all unaffected by their absence. See
-[Optional: the AI Hub analysis layer](#optional-the-ai-hub-analysis-layer).
+The default image is the 2026.3 AI preview community build, which carries both
+halves, so every command below works with no flags. ISC employees pull it from
+`docker.iscinternal.com`; everyone else downloads the tarball from
+<https://evaluation.intersystems.com>.
+
+Without that image the contest pipeline still runs in full on the public
+`iris-community:2026.1` — no login, no VPN, no license key. `Gaia.Install` skips
+the analysis classes and names them; `^RunScript` and `result.csv` are unaffected,
+and `tests/e2e.sh` passes 23/23 on either image. See
+[Building without AI Hub](#building-without-ai-hub).
 
 ## How It Works
 
@@ -78,15 +84,20 @@ straight to `PREDICT()`.
 
 ## Prerequisites
 
-- Docker + Docker Compose installed. No InterSystems login, no VPN and no
-  license key: the default base image is the public community edition.
+- Docker + Docker Compose installed.
+- The 2026.3 AI preview community image, the default base. ISC employees pull it
+  from `docker.iscinternal.com`; everyone else downloads the tarball from
+  <https://evaluation.intersystems.com> and `docker load`s it. Not needed for the
+  contest pipeline alone — see [Building without AI Hub](#building-without-ai-hub),
+  which requires no login, no VPN and no license key.
+- `OPENAI_API_KEY` for the four analysis reports. The pipeline does not use it.
 - 16 GB RAM recommended (8 GB minimum)
 - ~10 GB free disk space (image + data)
 - Internet access for data download (~360 MB)
 
 ## Quick Start
 
-Four commands, from nothing to `result.csv`.
+Five steps, from nothing to `result.csv` and the analysis reports.
 
 ```bash
 git clone --recursive https://github.com/isc-tdyar/gaia-iml.git
@@ -147,12 +158,22 @@ head -5 data/out/result.csv
 head -5 data/out/quality.csv
 ```
 
-The base image is
-`containers.intersystems.com/intersystems/iris-community:2026.1`, which needs no
-credentials. Override it with
-`docker compose build --build-arg IMAGE=<your tag>` to build on another image —
-see [Optional: the AI Hub analysis layer](#optional-the-ai-hub-analysis-layer)
-for the one case that needs to.
+**5. Read the analysis.** The four AI Hub reports need `OPENAI_API_KEY` in the
+environment; they sit outside `^RunScript` because LLM latency is not ours to
+control.
+
+```bash
+docker exec -i gaia-iml-iris iris session IRIS -U USER <<'EOF'
+do ^Analyze
+do ^RLMAudit
+halt
+EOF
+head -40 data/out/rlm_audit.md
+```
+
+The base image is the 2026.3 AI preview community build. Override it with
+`docker compose build --build-arg IMAGE=<your tag>` — see
+[Building without AI Hub](#building-without-ai-hub).
 
 ### Installing with IPM
 
@@ -165,8 +186,9 @@ shells out to `irispython` against fixed paths under `/home/irisowner/dev`, whic
 an IPM install does not create. What `zpm load` gives you is the routines and the
 models on an instance you already have.
 
-On an image without AI Hub or `lib/rlm-core`, the install compiles `^RunScript`
-and prints what it left out:
+On an image without AI Hub or `lib/rlm-core` — see
+[Building without AI Hub](#building-without-ai-hub) — the install compiles
+`^RunScript` and prints what it left out:
 
 ```text
 [gaia-iml] analysis layer skipped: %AI.Agent, %AI.Tool, RLM.Source.Table,
@@ -242,36 +264,22 @@ fuller name resolves to `src/UnitTest/UnitTest/Gaia`, which does not exist. The
 `"ck"` qualifier is required — without it the classes are found but never
 compiled.
 
-**This suite needs the AI preview image.** Three of its six classes
-(`UnitTest.Gaia.Source`, `UnitTest.Gaia.RLM2`, `UnitTest.Gaia.SourceCounts`)
-test the analysis layer, so on the default public image they fail to compile on
-`Gaia.Source`/`Gaia.RLM2` not existing and `RunTest` reports the suite as
-failed. That is expected there, and says nothing about the contest pipeline —
-`tests/e2e.sh` is the suite that covers `^RunScript` and both IntegratedML
-models, and it passes on the public image.
+All six classes compile and run on the default image. On the public-image
+fallback, three of them (`UnitTest.Gaia.Source`, `UnitTest.Gaia.RLM2`,
+`UnitTest.Gaia.SourceCounts`) fail to compile on `Gaia.Source`/`Gaia.RLM2` not
+existing and `RunTest` reports the suite as failed. That is expected there and
+says nothing about the contest pipeline — `tests/e2e.sh` covers `^RunScript` and
+both IntegratedML models, and it passes on either image.
 
-## Optional: the AI Hub analysis layer
+## The AI Hub analysis layer
 
-Everything above runs on the public community image. This section does not: the
-four report entry points below build on `%AI.Agent`, which ships only in the
-InterSystems 2026.3 AI preview image. On the public image `Gaia.Install` skips
-these classes and says so, and `^RunScript`, `result.csv` and `quality.csv` are
-unaffected.
+`^RunScript` produces the challenge answer. This layer reads it back: 74,998
+scored sources are a table no one wants to read, and the interesting question —
+_where is the photometry bad, and why_ — is not one a `WHERE` clause asks.
 
-To run them you need that preview image plus `OPENAI_API_KEY` in the
-environment, then build against it:
-
-```bash
-docker compose build --build-arg IMAGE=<the AI preview tag>
-```
-
-ISC employees can pull the preview tag from the internal registry
-(`docker.iscinternal.com`); everyone else downloads the tarball from
-<https://evaluation.intersystems.com> and loads it with `docker load`. Neither is
-needed for the contest pipeline.
-
-Four optional entry points, all kept out of `^RunScript` because LLM latency is
-not ours to control:
+It runs on the default image. All four entry points need `OPENAI_API_KEY` in the
+environment, and all four are kept out of `^RunScript` because LLM latency is not
+ours to control:
 
 | Command         | Output                   | What it does                    |
 | --------------- | ------------------------ | ------------------------------- |
@@ -334,6 +342,43 @@ so the model chooses the decomposition and the spawn is explicit.
 
 Requires `OPENAI_API_KEY` in the environment. Without it these print the reason
 and exit, leaving `result.csv` untouched.
+
+## Building without AI Hub
+
+The contest pipeline runs in full on the public community image, which needs no
+InterSystems login, no VPN and no license key:
+
+```bash
+docker compose build \
+  --build-arg IMAGE=containers.intersystems.com/intersystems/iris-community:2026.1
+docker compose up -d --wait
+```
+
+That image carries embedded Python, IntegratedML and the `%ML.AutoML.Provider`
+the custom `IRISModel` regressors plug into — everything `^RunScript` needs. What
+it lacks is `%AI.Agent` and `%AI.Tool`, so `Gaia.Install` skips the six analysis
+classes at activation and names what it skipped:
+
+```text
+[gaia-iml] analysis layer skipped: %AI.Agent, %AI.Tool, RLM.Source.Table,
+  RLM.Slice not present on this instance.
+```
+
+`tests/e2e.sh` passes 23/23 either way, in 11.3s against 10.7s, and `result.csv`
+is byte-identical: it comes from a `WHERE` clause, so nothing about the image can
+move it. The four report entry points are absent rather than broken — a skip that
+names the classes it dropped, not a stack trace.
+
+`quality.csv` is not byte-identical, and not because of the image. NGBoost's fit
+runs at `docker build` time and is not bit-reproducible across builds even with
+`random_state=42` fixed: two builds of the _same_ image disagree on 1,900 of
+74,998 predictions, mean absolute difference 0.00005 and worst case 0.0157. MAE
+holds at 0.0432 either way. If you need the exact same numbers twice, keep the
+image rather than rebuilding it.
+
+Deciding that at activation is why `module.xml` does not list `Gaia.PKG`: naming
+the package would make the whole module fail to install on a stock image,
+`^RunScript` included, for the sake of the analysis layer.
 
 ## Article
 
