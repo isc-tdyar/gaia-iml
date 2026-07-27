@@ -32,12 +32,12 @@ submitting: OEX reads the manifest and README from the public default branch.
   two are comparable.
 
   The `Dockerfile` default is the 2026.3 AI preview community image, so both
-  layers work with no flags for anyone who has it — ISC employees from
+  layers work with no flags for anyone who has it: ISC employees from
   `docker.iscinternal.com`, everyone else from the evaluation tarball. Also state
   the fallback: one `--build-arg IMAGE=…iris-community:2026.1` runs the whole
   contest pipeline on the public image with no login, no VPN and no license key,
   where `Gaia.Install` skips the analysis classes and prints which ones. Both
-  paths pass `tests/e2e.sh` 23/23 — 10.7s and 11.3s — and `result.csv` is
+  paths pass `tests/e2e.sh` 23/23, in 10.7s and 11.3s, and `result.csv` is
   byte-identical. `quality.csv` is not, because NGBoost's build-time fit is not
   bit-reproducible across builds on either image; MAE holds at 0.0432. Do not
   promise a prediction checksum on the listing.
@@ -78,9 +78,9 @@ Done for all three:
   `gaia-iml/tests/zpm_install.sh`.
 
   This check was listed as done here before it had ever run. None of the three
-  project containers has IPM installed at all — `%IPM.Main` and
+  project containers has IPM installed at all. `%IPM.Main` and
   `%ZPM.PackageManager` are both absent from the AI-preview and the project
-  images — so every earlier claim about `zpm load` was inference from reading the
+  images, so every earlier claim about `zpm load` was inference from reading the
   manifests. Running it for real on a public community image passed `gaia-fast`
   and `gaia-terse` and failed `gaia-iml` twice over: an unresolvable `rlm-core`
   dependency aborted the load before compiling anything, and with that removed
@@ -97,9 +97,9 @@ Done for all three:
   ERROR #5001: Resource 'RunScript.MAC' is already defined as part of module 'gaia-fast'
   ```
 
-  That is correct behaviour — they are three answers to one challenge, not
-  components — but it is worth one line on each listing so nobody reads it as a
-  broken package.
+  That is correct behaviour, since they are three answers to one challenge
+  rather than components, but it is worth one line on each listing so nobody
+  reads it as a broken package.
 
 - MIT `LICENSE` present
 - README covers prerequisites, data download, quick start, output format
@@ -115,7 +115,7 @@ Done for all three:
   public `iris-community:2026.1` image: all 23 pass, 57,099 detections, 74,998
   scored, MAE 0.0432, 10.6s. gaia-iml also has the `%UnitTest` suite and the IPM
   gate, but the `%UnitTest` suite covers the optional analysis layer and needs
-  the AI preview image — three of its six classes do not compile on the public
+  the AI preview image: three of its six classes do not compile on the public
   one.
 
   Writing these found a real defect. Both NGBoost models were training
@@ -123,7 +123,7 @@ Done for all three:
   `kwargs.get("random_state", 42)` never returned 42, and AutoML's own
   `df.sample(frac=1, random_state=...)` shuffle was unseeded too. Every
   `docker build` produced a slightly different model. Accuracy was unaffected
-  (MAE 0.0432 both times) which is exactly why nothing caught it — it showed up
+  (MAE 0.0432 both times) which is why nothing caught it: it showed up only
   as bucket populations moving by ~0.05%. Both are now pinned.
 
 Still outstanding:

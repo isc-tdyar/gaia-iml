@@ -22,7 +22,7 @@ halves, so every command below works with no flags. ISC employees pull it from
 <https://evaluation.intersystems.com>.
 
 Without that image the contest pipeline still runs in full on the public
-`iris-community:2026.1` — no login, no VPN, no license key. `Gaia.Install` skips
+`iris-community:2026.1`: no login, no VPN, no license key. `Gaia.Install` skips
 the analysis classes and names them; `^RunScript` and `result.csv` are unaffected,
 and `tests/e2e.sh` passes 23/23 on either image. See
 [Building without AI Hub](#building-without-ai-hub).
@@ -66,9 +66,9 @@ one: the two candidate pools are separate, and a numeric target never looks in
 the classifier pool. Each model gets its own subdirectory, because `load_models()`
 imports every `.py` in the directory it is handed.
 
-NGBoost is not scikit-learn compatible out of the box, which is the interesting
-part: `gaia_quality_estimator.py` wraps it in a `fit`/`predict` shim, and that is
-all IntegratedML needs.
+NGBoost is not scikit-learn compatible out of the box.
+`gaia_quality_estimator.py` wraps it in a `fit`/`predict` shim, and that is all
+IntegratedML needs.
 
 The pair predicts `reject_fraction`, the share of a source's epochs that ESA's own
 variability pipeline rejected. That target is not derivable from the features, so
@@ -88,7 +88,7 @@ straight to `PREDICT()`.
 - The 2026.3 AI preview community image, the default base. ISC employees pull it
   from `docker.iscinternal.com`; everyone else downloads the tarball from
   <https://evaluation.intersystems.com> and `docker load`s it. Not needed for the
-  contest pipeline alone — see [Building without AI Hub](#building-without-ai-hub),
+  contest pipeline alone; see [Building without AI Hub](#building-without-ai-hub),
   which requires no login, no VPN and no license key.
 - `OPENAI_API_KEY` for the four analysis reports. The pipeline does not use it.
 - 16 GB RAM recommended (8 GB minimum)
@@ -130,7 +130,7 @@ ls data/in/*.csv.gz | wc -l   # expect 20
 Expected: 20 files, ~360 MB total, 74,998 sources. Allow several minutes.
 
 Do not fetch the bare directory URL
-(`https://cdn.gea.esac.esa.int/Gaia/gdr3/Photometry/epoch_photometry/`) — it is
+(`https://cdn.gea.esac.esa.int/Gaia/gdr3/Photometry/epoch_photometry/`). It is
 an object store, not a web server, and answers `301` with an empty body, so a
 `grep` for file names over it silently yields zero files and the download step
 appears to succeed while downloading nothing.
@@ -172,7 +172,7 @@ head -40 data/out/rlm_audit.md
 ```
 
 The base image is the 2026.3 AI preview community build. Override it with
-`docker compose build --build-arg IMAGE=<your tag>` — see
+`docker compose build --build-arg IMAGE=<your tag>`; see
 [Building without AI Hub](#building-without-ai-hub).
 
 ### Installing with IPM
@@ -186,8 +186,8 @@ shells out to `irispython` against fixed paths under `/home/irisowner/dev`, whic
 an IPM install does not create. What `zpm load` gives you is the routines and the
 models on an instance you already have.
 
-On an image without AI Hub or `lib/rlm-core` — see
-[Building without AI Hub](#building-without-ai-hub) — the install compiles
+On an image without AI Hub or `lib/rlm-core` (see
+[Building without AI Hub](#building-without-ai-hub)) the install compiles
 `^RunScript` and prints what it left out:
 
 ```text
@@ -196,7 +196,7 @@ On an image without AI Hub or `lib/rlm-core` — see
 ```
 
 `Gaia.Install` decides that at activation. `module.xml` deliberately does not list
-`Gaia.PKG` — six classes there extend `%AI.Agent`, `%AI.Tool` or
+`Gaia.PKG`. Six classes there extend `%AI.Agent`, `%AI.Tool` or
 `RLM.Source.Table`, and listing the package makes the whole module fail to install
 on any stock image, `^RunScript` included, for the sake of a bonus feature.
 `tests/zpm_install.sh` is the check, run against
@@ -232,7 +232,7 @@ tests/zpm_install.sh  # the IPM install, on a stock community image
 ```
 
 `e2e.sh` deletes both outputs, runs `^RunScript`, and checks `result.csv` the
-way a judge would — 20 inputs, header, 57,099 rows, descending sort, the 100%
+way a judge would: 20 inputs, header, 57,099 rows, descending sort, the 100%
 threshold, duplicates, `min <= max`, and the `source_id` checksum shared with
 [gaia-fast](https://github.com/isc-tdyar/gaia-fast) and
 [gaia-terse](https://github.com/isc-tdyar/gaia-terse).
@@ -247,8 +247,8 @@ vary (a constant-output model passes every count-based check), that every
 partially-scored table would leave the agents unable to run and nothing else
 would notice.
 
-The four analysis entry points are not in `e2e.sh` — they make LLM calls, which
-is why they sit outside `^RunScript`. Their logic is covered by a `%UnitTest`
+The four analysis entry points are not in `e2e.sh`, because they make LLM calls,
+which is why they sit outside `^RunScript` too. Their logic is covered by a `%UnitTest`
 suite against a null provider:
 
 ```bash
@@ -261,21 +261,21 @@ EOF
 `Gaia`, not `UnitTest.Gaia`: `iris.script` sets `^UnitTestRoot` to
 `/home/irisowner/dev/src/UnitTest`, so the argument is a path below it and the
 fuller name resolves to `src/UnitTest/UnitTest/Gaia`, which does not exist. The
-`"ck"` qualifier is required — without it the classes are found but never
+`"ck"` qualifier is required; without it the classes are found but never
 compiled.
 
 All six classes compile and run on the default image. On the public-image
 fallback, three of them (`UnitTest.Gaia.Source`, `UnitTest.Gaia.RLM2`,
 `UnitTest.Gaia.SourceCounts`) fail to compile on `Gaia.Source`/`Gaia.RLM2` not
 existing and `RunTest` reports the suite as failed. That is expected there and
-says nothing about the contest pipeline — `tests/e2e.sh` covers `^RunScript` and
+says nothing about the contest pipeline: `tests/e2e.sh` covers `^RunScript` and
 both IntegratedML models, and it passes on either image.
 
 ## The AI Hub analysis layer
 
 `^RunScript` produces the challenge answer. This layer reads it back: 74,998
-scored sources are a table no one wants to read, and the interesting question —
-_where is the photometry bad, and why_ — is not one a `WHERE` clause asks.
+scored sources are a table no one wants to read, and "where is the photometry
+bad, and why" is not a question a `WHERE` clause asks.
 
 It runs on the default image. All four entry points need `OPENAI_API_KEY` in the
 environment, and all four are kept out of `^RunScript` because LLM latency is not
@@ -313,7 +313,7 @@ The recursion, the frontier, the call budget, the slice resolver, the trace and
 the report assembly are all `rlm-core`'s.
 
 Porting onto it removed 510 lines: `Gaia.RLM` went from 513 to 129, and
-`Gaia.Slice` — a second copy of the slice grammar — was deleted outright.
+`Gaia.Slice`, a second copy of the slice grammar, was deleted outright.
 
 `Gaia.RLM2` answers the same audit question with the decomposition on the other
 side. `Gaia.RLM` only ever asks the model which key to split by and the engine
@@ -355,7 +355,8 @@ docker compose up -d --wait
 ```
 
 That image carries embedded Python, IntegratedML and the `%ML.AutoML.Provider`
-the custom `IRISModel` regressors plug into — everything `^RunScript` needs. What
+the custom `IRISModel` regressors plug into, which is everything `^RunScript`
+needs. What
 it lacks is `%AI.Agent` and `%AI.Tool`, so `Gaia.Install` skips the six analysis
 classes at activation and names what it skipped:
 
@@ -366,7 +367,7 @@ classes at activation and names what it skipped:
 
 `tests/e2e.sh` passes 23/23 either way, in 11.3s against 10.7s, and `result.csv`
 is byte-identical: it comes from a `WHERE` clause, so nothing about the image can
-move it. The four report entry points are absent rather than broken — a skip that
+move it. The four report entry points are absent rather than broken: a skip that
 names the classes it dropped, not a stack trace.
 
 `quality.csv` is not byte-identical, and not because of the image. NGBoost's fit
