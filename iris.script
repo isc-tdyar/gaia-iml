@@ -27,10 +27,20 @@
     ; The contest entry points. LoadDir skips .mac routines, so load each one
     ; explicitly -- and unconditionally, because none of them needs AI Hub.
     do $System.OBJ.Load("/home/irisowner/dev/src/RunScript.mac","ck")
+    do $System.OBJ.Load("/home/irisowner/dev/src/Classify.mac","ck")
+    do $System.OBJ.Load("/home/irisowner/dev/src/Adjudicate.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/Analyze.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLMAudit.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLMTriage.mac","ck")
     do $System.OBJ.Load("/home/irisowner/dev/src/RLM2Audit.mac","ck")
+
+    ; Gaia.Adjudicator extends %AI.Agent but not RLM.*, so it is loadable on any
+    ; image carrying AI Hub, including ones without rlm-core. The LoadDir above
+    ; is gated on both, so load this one separately when only AI Hub is present
+    ; -- otherwise ^Adjudicate's deterministic stages work and its agent stage
+    ; reports a missing class rather than a missing key.
+    set haveAIOnly = ##class(%Dictionary.CompiledClass).%ExistsId("%AI.Agent") && 'haveRLM
+    do:haveAIOnly $System.OBJ.Load("/home/irisowner/dev/src/Gaia/Adjudicator.cls","ck")
 
     ; %UnitTest.Manager resolves its test spec relative to ^UnitTestRoot, so
     ; without this the documented RunTest("Gaia",,"ck") finds nothing. Point it at

@@ -1,0 +1,136 @@
+ROUTINE Adjudicate
+ ; ============================================================================
+ ; do ^Adjudicate -- when the classifier and the catalogue disagree, work out
+ ; which one is right.
+ ; ============================================================================
+ ;
+ ; THE PROBLEM
+ ;
+ ; ^Classify trains on ESA's published labels and then disagrees with them on
+ ; 656 of 17,597 held-out sources. Both parties looked at the same light curve
+ ; and reached different answers, so the light curve cannot settle it. The
+ ; tie-breaker has to come from outside both.
+ ;
+ ; Disagreement is not random, which is the first evidence that both are
+ ; tracking something real:
+ ;
+ ;     ESA best_class_score   disagreement rate
+ ;     0.0 - 0.2                    7.9%
+ ;     0.2 - 0.4                    4.1%
+ ;     0.4 - 0.6                    2.8%
+ ;     0.6 - 0.8                    1.9%
+ ;     0.8 - 1.0                    0.8%
+ ;
+ ; A tenfold gradient. The two agree where the physics is clear and diverge
+ ; exactly where the catalogue was already unsure.
+ ;
+ ; TWO DIFFERENT DISAGREEMENT COUNTS, AND WHICH ONE MEANS SOMETHING
+ ;
+ ; The 656 above is measured offline on a held-out quarter of the labelled
+ ; sources, so those are predictions on data the model never saw. That is the
+ ; number the rates in the table come from and the one worth reasoning about.
+ ;
+ ; Running this routine reports about 63. GaiaVariableScored carries a
+ ; var_class only for the 10,660 sources in the committed training extract, and
+ ; the model agrees with itself on 99.4% of the rows it was fitted on, so what
+ ; is left is its residual training error rather than a hard case. Expect the
+ ; in-database verdicts to favour the catalogue for the same reason: a source
+ ; the model gets wrong on its own training data is usually a source the model
+ ; is wrong about.
+ ;
+ ; Scoring the unlabelled 64,408 would find real disagreements, but there is
+ ; nothing to disagree with -- no published label -- so they cannot be counted
+ ; without pulling more of vari_classifier_result over TAP.
+ ;
+ ; THREE STAGES, CHEAPEST FIRST
+ ;
+ ; Nothing reaches a language model that arithmetic could have settled.
+ ;
+ ;  1. SQL -- find the disagreements.
+ ;
+ ;  2. numpy/sklearn (gaia_dispute.py) -- settle what distance can settle.
+ ;     Compare each disputed source to the centroids of confidently-agreed
+ ;     examples of both classes: 64.3% sit closer to the classifier's answer.
+ ;     Then k-means over the disputed sources, which collapses ~50 label pairs
+ ;     into 6 recurring degeneracies and merges the bidirectional ones
+ ;     (RS->ECL and ECL->RS are one phenomenon) without being told they are
+ ;     related. Five lines of numpy, deterministic, free, and better at this
+ ;     than an agent would be.
+ ;
+ ;  3. The literature (gaia_simbad.py + Gaia.Adjudicator / Gaia.LiteratureAudit)
+ ;     -- what survives stages 1 and 2 is genuinely textual, and it is the only
+ ;     part that needs an LLM. Ranking a 2017 machine-learned identification
+ ;     against 2022 survey photometry means knowing how those methods compare,
+ ;     which is knowledge held in prose and absent from every table here.
+ ;
+ ; THE CIRCULARITY TRAP
+ ;
+ ; SIMBAD ingests the Gaia DR3 variability catalogue itself. Across all of
+ ; SIMBAD, 61.6% of EB*, 38.6% of LP* and 32.1% of RR* classifications
+ ; originate from bibcode 2022yCat.1358....0G -- which is the label source this
+ ; project trains on. Treating those as independent evidence would mean
+ ; checking ESA's labels with ESA's labels and finding, unsurprisingly, that
+ ; ESA agrees with itself. Every object-type query filters that bibcode out.
+ ; On these 656 disputes it accounts for 159 of 1,412 rows (11.3%); the
+ ; remaining 88.7% are genuinely independent.
+ ;
+ ; FLAT CALL OR RECURSION
+ ;
+ ; Most disputed sources carry a handful of papers and one Chat() call sees all
+ ; of them (Gaia.Adjudicator). Well-studied stars do not: HD 283572 has 311
+ ; references, 72 relevant. Truncating to the top 20 by keyword score means a
+ ; heuristic that has never read the papers decides which ones the model sees --
+ ; and that heuristic was wrong here once already, matching galactic rotation
+ ; curves and maser kinematics on "rotation" and displacing a 1993 paper with
+ ; the star's own name in the title. Fixing it changed the verdict.
+ ;
+ ; So above 25 relevant papers the bibliography becomes a SQL table and
+ ; Gaia.LiteratureAudit recurses over it (rlm-core): the root peeks at
+ ; aggregates across epoch, claim type and targeted-vs-survey, picks a
+ ; decomposition, and each leaf reads only its slice. Nothing is dropped and
+ ; context depth stays constant.
+ ;
+ ; WORKED EXAMPLE
+ ;
+ ;     Gaia DR3 164536250037820160 = HD 283572
+ ;       catalogue : YSO  (ESA confidence 0.29)
+ ;       model     : RS   (classifier confidence 0.64)
+ ;       colour 1.06 against typical YSO 3.13 and typical RS 1.41
+ ;       SIMBAD: G5IVe, 311 references, 72 relevant, 39 of them about rotation
+ ;
+ ;     verdict: both defensible -- a young star that is also a spotted rotator
+ ;
+ ; Which is right. Papers from 1984 onward describe the rotational modulation
+ ; the classifier detected, and the star is a confirmed young stellar object.
+ ; A single-label catalogue cannot record both.
+ ;
+ ; COVERAGE
+ ;
+ ; 337 of the 656 disputes (51.4%) have a SIMBAD entry at all. For the other
+ ; 319 the verdict is "insufficient evidence" and no LLM call is spent.
+ ;
+ ; REQUIREMENTS
+ ;
+ ; Network access to SIMBAD (CDS) and OPENAI_API_KEY for the agent stage.
+ ; Without the key the deterministic stages still run and the verdicts say the
+ ; agent was unavailable. Kept out of ^RunScript for the same reason as
+ ; ^Analyze: LLM and network latency are not ours to control.
+ ;
+ ; Optional argument: one source_id to adjudicate on its own. Otherwise the
+ ; most confident disagreements are taken first, because those are the cases
+ ; where the classifier is making a real claim rather than guessing.
+ ; ============================================================================
+ New inDir,outDir,startTime,cmd,rc,elapsed,extra
+ Set inDir = "/home/irisowner/dev/data/in"
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Set extra = $Get(%1, "")
+ Set startTime = $ZHOROLOG
+ Set cmd = "GAIA_CACHE="_inDir_" GAIA_OUT="_outDir_" /usr/irissys/bin/irispython /home/irisowner/dev/adjudicate_disputes.py"
+ If extra '= "" { Set cmd = cmd_" --source "_extra }
+ Set rc = $ZF(-1, cmd)
+ Set elapsed = $ZHOROLOG - startTime
+ If rc '= 0 { Write "ERROR: rc=",rc,! Quit }
+ Write "OK: ",outDir,"/disputes.json",!
+ Write "Elapsed time: ",elapsed," seconds",!
+ Quit

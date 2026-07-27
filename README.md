@@ -29,7 +29,7 @@ and `tests/e2e.sh` passes 23/23 on either image. See
 
 ## How It Works
 
-1. `do ^RunScript` → `irispython run_embedded_iml.py`
+1. `do ^RunScript` -> `irispython run_embedded_iml.py`
 2. Parallel streaming scan extracts BP/RP flux, flux-error and ESA reject-flag
    arrays from 20 `.gz` files
 3. Inserts 74,998 rows into `GaiaFluxStats` and `GaiaQualityStats`
@@ -74,6 +74,141 @@ The pair predicts `reject_fraction`, the share of a source's epochs that ESA's o
 variability pipeline rejected. That target is not derivable from the features, so
 there is something to learn: MAE 0.0432 against 0.0613 for predicting the mean,
 30% better, with a per-row error bar from the sigma head.
+
+## Classifying Variable-Star Types
+
+The third custom model, `GaiaVariableType`, answers the question the challenge
+data is actually about: given a variable star, which kind is it?
+
+The labels are ESA's own, from `gaiadr3.vari_classifier_result`, so the ground
+truth is the published DR3 classification rather than anything invented here.
+Of the 74,998 scored sources, 70,793 carry one. The features are 27 classical
+light-curve statistics computed from the per-epoch arrays -- amplitude, scatter,
+skew and kurtosis, the Abbe parameter, a Stetson correlation index, a
+Lomb-Scargle period and its peak power, and BP-RP colour.
+
+Nine classes with enough examples to learn: `AGN`, `DSCT|GDOR|SXPHE`, `ECL`,
+`LPV`, `RR`, `RS`, `S`, `SOLAR_LIKE`, `YSO`. Held-out macro F1 **0.938**,
+per class from 0.887 (`YSO`) to 0.991 (`AGN`).
+
+```python
+# gaia_variable_type_model.py
+class IRISModel:
+    def __init__(self, **kwargs):
+        self.name  = "gaia_variable_type_hgb"
+        self.model = HistGradientBoostingClassifier(
+            max_iter=int(kwargs.get("max_iter", 300)),
+            random_state=kwargs.get("random_state") or 42,
+        )
+```
+
+```sql
+CREATE MODEL GaiaVariableType PREDICTING (var_class)
+WITH (g_n NUMERIC, g_amp NUMERIC, g_abbe NUMERIC, ... rej_rp NUMERIC)
+FROM GaiaLightCurveFeatures
+USING {"iscmodelsdisabled": 1,
+       "pathtoclassifiers": "<automl_root>/Classifiers/gaia_variable_type"};
+```
+
+Note `pathtoclassifiers`, the mirror of the regressors above: a categorical
+target never consults the regressor pool. `HistGradientBoostingClassifier` also
+takes NaN natively, which matters because a Lomb-Scargle period is genuinely
+undefined for a source with fewer than eight usable epochs, and imputing one
+would invent a signal that was never observed.
+
+Two notes on honesty. This is a different task from ESA's, and the F1 numbers are
+not comparable to theirs: ESA classified 1.8 billion sources and had to _find_
+the variables first, while these 70,793 are ones ESA already confirmed. And the
+feature-based approach is not a compromise -- the StarEmbed benchmark
+([arXiv:2510.06200](https://arxiv.org/html/2510.06200v1)) measured hand-crafted
+features plus a tree ensemble at F1 0.807 on ZTF light curves, ahead of every
+time-series foundation model it tested.
+
+Run it with `do ^Classify`, which writes `data/out/variable_types.csv`.
+
+## When the Model and the Catalogue Disagree
+
+The classifier disagrees with the published DR3 label on 656 of 17,597 held-out
+sources (3.7%). Disagreement tracks ESA's own uncertainty almost perfectly:
+
+| ESA `best_class_score` | disagreement rate |
+| ---------------------- | ----------------- |
+| 0.0-0.2                | 7.9%              |
+| 0.2-0.4                | 4.1%              |
+| 0.4-0.6                | 2.8%              |
+| 0.6-0.8                | 1.9%              |
+| 0.8-1.0                | 0.8%              |
+
+A ten-fold gradient. The two models agree where the physics is clear and diverge
+where the catalogue was already unsure, which is what you would expect if both
+are tracking something real.
+
+Those 656 are measured offline on a held-out quarter of the labelled sources.
+Running `do ^Adjudicate` reports about 63 instead, and the difference is not a
+bug: `GaiaVariableScored` carries an ESA label only for the 10,660 sources in
+the committed training extract, and the model agrees with itself on 99.4% of
+the rows it was fitted on. What survives is residual training error, so expect
+those in-database verdicts to favour the catalogue. The held-out number is the
+one that means anything.
+
+Deciding _who is right_ is done in three stages, in increasing cost, so that
+nothing reaches a language model that arithmetic could settle:
+
+1. **Centroid distance** (`gaia_dispute.py`). Compare each disputed source to
+   the centroids of confidently-agreed examples of both classes. 64.3% land
+   closer to the classifier's answer.
+2. **Clustering**. k-means over the disputed sources collapses ~50 label pairs
+   into 6 recurring degeneracies, and finds the bidirectional ones -- `RS->ECL`
+   and `ECL->RS` are one phenomenon -- without being told they are related.
+3. **The literature** (`gaia_simbad.py`, `Gaia.Adjudicator`). What survives is
+   genuinely textual, and it is the only part that needs an LLM.
+
+## The Adjudicator: An AI Hub Agent With a Job Statistics Cannot Do
+
+Stages 1 and 2 are five lines of numpy and they are better than an agent at what
+they do: deterministic, reproducible, free. The agent is given only what is left.
+
+For a disputed source, `gaia_simbad.py` queries SIMBAD over TAP for independent
+object types and the bibliography behind them, and `Gaia.Adjudicator` weighs the
+published classifications. That is a real judgment: a well-studied star carries
+decades of conflicting claims from different teams, and ranking a 2017
+machine-learned identification against 2022 survey photometry needs to know how
+those methods compare -- knowledge held in prose and absent from every table
+here.
+
+**The circularity trap.** SIMBAD ingests the Gaia DR3 variability catalogue
+itself: across all of SIMBAD, 61.6% of `EB*`, 38.6% of `LP*` and 32.1% of `RR*`
+classifications originate from bibcode `2022yCat.1358....0G`, which _is_ the
+label source this project trains on. Using them as independent evidence would
+mean checking ESA's labels with ESA's labels. Every otype query filters that
+bibcode out; on the 656 disputes it accounts for 159 of 1,412 otype rows (11.3%),
+and the remaining 88.7% are genuinely independent.
+
+Worked example, `do ^Adjudicate`:
+
+```text
+Gaia DR3 164536250037820160
+  catalogue : YSO   (ESA confidence 0.29)
+  model     : RS    (classifier confidence 0.64)
+
+feature            this source    typical YSO     typical RS
+bp_rp_colour             1.060          3.125          1.410
+g_abbe                   0.432          0.651          0.462
+g_stetson                0.467          0.263          0.412
+
+SIMBAD    : HD 283572, spectral type G5IVe, 311 references
+            72 relevant papers after filtering
+```
+
+The agent's verdict is **both defensible**: a young stellar object that is also
+a spotted rotator, citing `2011ApJ...736..123M` on starspot-induced variability.
+Which is right. The star has been studied since 1954, and papers from 1984
+onward describe exactly the rotational modulation the classifier detected. The
+catalogue had to pick one label; the literature holds both.
+
+Coverage is a result too, not a footnote: 337 of the 656 disputes (51.4%) have a
+SIMBAD entry at all. For the other 319 the honest verdict is _insufficient
+evidence_, and no LLM call is spent on them.
 
 ## Pre-Training Strategy
 

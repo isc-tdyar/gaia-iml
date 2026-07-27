@@ -3,8 +3,8 @@
   <Document name="gaia-iml.ZPM">
     <Module>
       <Name>gaia-iml</Name>
-      <Description>Gaia DR3 variable star detection using IntegratedML Custom Models + AI Hub. Scans 20 gzipped epoch photometry files, ingests flux and per-epoch quality stats into IRIS, then scores every source with SQL PREDICT() against two custom NGBoost IRISModel regressors that predict ESA's own epoch reject fraction and its uncertainty. ~11s end-to-end. InterSystems Employee Programming Challenge #1. The optional recursive-language-model reports (^RLMAudit, ^RLMTriage, ^RLM2Audit) run on rlm-core: Gaia.Source declares the survey as an RLM.Source -- six dimensions, 22 slices, sixteen aggregates -- and the library supplies the recursion, the budget, the slice resolver and the report.</Description>
-      <Version>1.0.0</Version>
+      <Description>Gaia DR3 variable star detection and classification using IntegratedML Custom Models + AI Hub. Scans 20 gzipped epoch photometry files, ingests flux and per-epoch quality stats into IRIS, then scores every source with SQL PREDICT() against three custom IRISModels: two NGBoost regressors predicting ESA's own epoch reject fraction and its uncertainty, and a HistGradientBoosting classifier predicting variable-star type from 27 light-curve features (macro F1 0.938 over nine classes, labels from gaiadr3.vari_classifier_result). ~11s end-to-end for the contest path. Where the classifier disagrees with the published DR3 label, a three-stage adjudicator settles what centroid distance and clustering can settle, then asks an AI Hub agent to weigh the published literature from SIMBAD -- with the Gaia-derived classifications filtered out, because SIMBAD re-publishes them. InterSystems Employee Programming Challenge #1. The optional recursive-language-model reports (^RLMAudit, ^RLMTriage, ^RLM2Audit) run on rlm-core: Gaia.Source declares the survey as an RLM.Source -- six dimensions, 22 slices, sixteen aggregates -- and the library supplies the recursion, the budget, the slice resolver and the report.</Description>
+      <Version>1.1.0</Version>
       <Author>
         <Person>Thomas Dyar</Person>
         <Organization>InterSystems</Organization>
@@ -22,11 +22,13 @@
            superclass, so it compiles anywhere, and loads the rest where it can. -->
       <Resource Name="Gaia.Install.CLS"/>
       <Resource Name="RunScript.MAC"/>
+      <Resource Name="Classify.MAC"/>
+      <Resource Name="Adjudicate.MAC"/>
       <Resource Name="Analyze.MAC"/>
       <Resource Name="RLMAudit.MAC"/>
       <Resource Name="RLMTriage.MAC"/>
       <Resource Name="RLM2Audit.MAC"/>
-      <Keywords>IntegratedML,custom-models,AI-Hub,gaia,variable-stars,astronomy,embedded-python,PREDICT,NGBoost,machine-learning</Keywords>
+      <Keywords>IntegratedML,custom-models,AI-Hub,gaia,variable-stars,astronomy,embedded-python,PREDICT,NGBoost,machine-learning,classification,light-curves</Keywords>
       <!-- No <Dependencies> on rlm-core. It is not published to any registry and
            its repository is private, so naming it aborts the load before a line
            is compiled: `Could not find satisfactory version of rlm-core`. In the

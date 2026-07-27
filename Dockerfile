@@ -55,12 +55,21 @@ RUN apt-get update \
 ## verbose into IRISModel(**kwargs) and drops any extra USING keys, so the head
 ## cannot be chosen by parameter. Their shared estimator goes on the embedded
 ## Python path so both can import it.
+##
+## GaiaVariableType goes in Classifiers/ for the same reason in reverse: its
+## target is categorical, so AutoML only ever searches the classifier pool. Its
+## feature-extraction module goes on the embedded Python path because both the
+## pre-training step and the ingest pipeline import it.
 RUN ADIR=$(/usr/irissys/bin/irispython -c "import os,iris_automl;print(os.path.dirname(iris_automl.__file__))") \
  && mkdir -p "$ADIR/Regressors/gaia_quality_mean" \
              "$ADIR/Regressors/gaia_quality_sigma" \
+             "$ADIR/Classifiers/gaia_variable_type" \
  && cp /home/irisowner/dev/gaia_quality_mean_model.py  "$ADIR/Regressors/gaia_quality_mean/" \
  && cp /home/irisowner/dev/gaia_quality_sigma_model.py "$ADIR/Regressors/gaia_quality_sigma/" \
+ && cp /home/irisowner/dev/gaia_variable_type_model.py "$ADIR/Classifiers/gaia_variable_type/" \
  && cp /home/irisowner/dev/gaia_quality_estimator.py /usr/irissys/mgr/python/ \
+ && cp /home/irisowner/dev/gaia_lightcurve_features.py /usr/irissys/mgr/python/ \
+ && cp /home/irisowner/dev/gaia_variable_type_model.py /usr/irissys/mgr/python/ \
  && echo "custom models installed under $ADIR"
 USER irisowner
 
@@ -71,4 +80,5 @@ RUN --mount=type=bind,src=.,dst=. \
     iris merge IRIS merge.cpf && \
     iris session IRIS < iris.script && \
     /usr/irissys/bin/irispython /home/irisowner/dev/pretrain_gaia_model.py && \
+    /usr/irissys/bin/irispython /home/irisowner/dev/pretrain_variable_type.py && \
     iris stop IRIS quietly safely

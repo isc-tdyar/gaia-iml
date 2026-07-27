@@ -1,0 +1,54 @@
+ROUTINE Classify
+ ; ============================================================================
+ ; do ^Classify -- classify every source by variable-star type.
+ ; ============================================================================
+ ;
+ ; WHAT THIS DOES, IN ORDER
+ ;
+ ;  1. Reads the 20 benchmark epoch-photometry files and turns each source's
+ ;     per-epoch flux arrays into 27 light-curve statistics: amplitude and
+ ;     scatter, skew and kurtosis, the Abbe parameter, a Stetson correlation
+ ;     index, a Lomb-Scargle period and its peak power, BP-RP colour, and the
+ ;     fraction of epochs ESA rejected. (gaia_lightcurve_features.py)
+ ;
+ ;  2. Loads those 27 columns into SQLUser.GaiaVariableFeatures.
+ ;
+ ;  3. Scores every row with SQL PREDICT(GaiaVariableType) -- a custom
+ ;     IntegratedML IRISModel, a HistGradientBoosting classifier over nine
+ ;     variable-star classes. Trained at docker build time, so this run pays
+ ;     only for scoring.
+ ;
+ ;  4. Writes data/out/variable_types.csv: source_id, predicted class, and the
+ ;     four features that most separate the classes.
+ ;
+ ; WHERE THE LABELS COME FROM
+ ;
+ ; gaiadr3.vari_classifier_result.best_class_name, ESA's own published DR3
+ ; classification, pulled over the Gaia TAP archive. 70,793 of the 74,998
+ ; scored sources carry one. Held-out macro F1 0.938 across nine classes, per
+ ; class from 0.887 (YSO) to 0.991 (AGN).
+ ;
+ ; This is NOT comparable to ESA's own published per-class F1. ESA classified
+ ; 1.8 billion sources and had to find the variables first; these 70,793 are
+ ; ones ESA already confirmed variable. Different task, easier task.
+ ;
+ ; WHY IT IS NOT PART OF ^RunScript
+ ;
+ ; ^RunScript is the benchmarked contest path and its deliverable is
+ ; result.csv. Feature extraction here runs a Lomb-Scargle periodogram per
+ ; source, which is real work that has nothing to do with the challenge
+ ; answer, and folding it in would inflate the number the judge is timing.
+ ; Same reasoning as ^Analyze.
+ ; ============================================================================
+ New inDir,outDir,startTime,cmd,rc,elapsed
+ Set inDir = "/home/irisowner/dev/data/in"
+ Set outDir = "/home/irisowner/dev/data/out"
+ Do ##class(%File).CreateDirectoryChain(outDir)
+ Set startTime = $ZHOROLOG
+ Set cmd = "GAIA_CACHE="_inDir_" GAIA_OUT="_outDir_" /usr/irissys/bin/irispython /home/irisowner/dev/classify_variables.py"
+ Set rc = $ZF(-1, cmd)
+ Set elapsed = $ZHOROLOG - startTime
+ If rc '= 0 { Write "ERROR: rc=",rc,! Quit }
+ Write "OK: ",outDir,"/variable_types.csv",!
+ Write "Elapsed time: ",elapsed," seconds",!
+ Quit

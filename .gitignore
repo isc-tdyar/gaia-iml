@@ -1,6 +1,8 @@
 data/in/*.gz
 data/out/*.csv
 data/out/*.md
+data/out/*.json
+data/out/_*
 __pycache__/
 *.pyc
 iris-main.log
